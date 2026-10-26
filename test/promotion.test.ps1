@@ -7,6 +7,8 @@ $global:ApiopsPromotionMock = @{
     Calls = [Collections.Generic.List[object]]::new()
     Folders = [Collections.Generic.List[string]]::new()
     WrongBinding = $false
+    ChangedPolicy = $false
+    PolicyReads = 0
     ArmScope = '/subscriptions/00000000-0000-4000-8000-000000000001/resourceGroups/test-rg/providers/Microsoft.ApiManagement/service'
 }
 
@@ -32,6 +34,17 @@ function az {
         return (@{ properties = @{ gatewayUrl = "https://$instance.example.test" } } | ConvertTo-Json)
     }
     $path = ($url -split '/apis/', 2)[1].Split('?')[0]
+    if ($path -eq 'poc-rest/operations/get-status/policies/policy') {
+        if ($arguments -notcontains '--headers' -or $arguments -notcontains 'Accept=application/json') {
+            return "$([char]0xFEFF)<policies><inbound /></policies>"
+        }
+        $global:ApiopsPromotionMock.PolicyReads++
+        $marker = if ($global:ApiopsPromotionMock.ChangedPolicy -and $global:ApiopsPromotionMock.PolicyReads -gt 1) {
+            'changed'
+        } else { 'unchanged' }
+        return (@{ properties = @{ format = 'xml'; value = "<policies><inbound><base /></inbound><!-- $marker --></policies>" } } |
+            ConvertTo-Json -Depth 20)
+    }
     $properties = @{ path = $path; marker = 'unchanged' }
     if ($path -eq 'poc-proxy') { $properties.path = 'poc-proxy/mcp' }
     if ($path -eq 'poc-native') {
@@ -99,6 +112,18 @@ try {
     Assert-Mock ($tests[0].gateway -eq 'https://src.example.test' -and $tests[0].key -eq 'src-key') 'Source gateway/key mismatch.'
     Assert-Mock ($tests[2].gateway -eq 'https://dst.example.test' -and $tests[2].key -eq 'dst-key') 'Target gateway/key mismatch.'
     Assert-Mock ($env:POC_APIM_KEY -eq 'test-previous-key') 'Subscription-key environment was not restored.'
+
+    $global:ApiopsPromotionMock.ChangedPolicy = $true
+    $global:ApiopsPromotionMock.PolicyReads = 0
+    $rejected = $false
+    try {
+        & $promote -ResourceGroup test-rg -SourceApimName src -TargetApimName dst -Apply
+    } catch {
+        if ($_.Exception.Message -notmatch 'Source API configuration changed') { throw }
+        $rejected = $true
+    }
+    Assert-Mock $rejected 'Changed source policy content must fail preservation checks.'
+    $global:ApiopsPromotionMock.ChangedPolicy = $false
 
     $global:ApiopsPromotionMock.WrongBinding = $true
     $rejected = $false

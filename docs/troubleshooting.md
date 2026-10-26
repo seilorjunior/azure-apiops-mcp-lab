@@ -129,6 +129,19 @@ generic liveness URL.
 Use the official MCP smoke test rather than treating a single raw HTTP request as
 proof of protocol compliance. It performs initialization before tool discovery/calls.
 
+## Source snapshot fails parsing `<policies>` as JSON
+
+If source MCP calls pass but the snapshot fails with `Unexpected token` and
+`<policies>` (possibly preceded by a UTF-8 BOM), the policy GET returned XML
+instead of the JSON resource envelope. Azure CLI's `--output json` controls CLI
+formatting; it does not force the ARM endpoint to return JSON.
+
+Both promotion scripts explicitly send `--headers Accept=application/json` on
+snapshot reads. The JSON `properties.value` still contains the XML policy, so
+source policy content remains part of the before/after preservation check.
+Use the updated scripts; do not strip the BOM and parse XML as JSON or skip the
+policy snapshot. This failure occurs before APIops extraction or publication.
+
 ## Extraction loses an MCP API or its metadata
 
 Check [source-filter.yaml](../config/source-filter.yaml), source instance name,

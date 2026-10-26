@@ -5,9 +5,11 @@ MOCK_DIR="$(mktemp -d)"
 export MOCK_LOG="$MOCK_DIR/calls.log"
 export MOCK_FOLDERS="$MOCK_DIR/folders.log"
 export MOCK_SOURCE_COUNT="$MOCK_DIR/source-count"
-export MOCK_WRONG_BINDING=0 MOCK_BAD_METADATA=0 MOCK_NPM_EXIT=0 MOCK_FAIL_PUBLISH=0 MOCK_BAD_PATH=0 MOCK_CHANGED_SOURCE=0
+export MOCK_POLICY_COUNT="$MOCK_DIR/policy-count"
+export MOCK_WRONG_BINDING=0 MOCK_BAD_METADATA=0 MOCK_NPM_EXIT=0 MOCK_FAIL_PUBLISH=0 MOCK_BAD_PATH=0 MOCK_CHANGED_SOURCE=0 MOCK_CHANGED_POLICY=0
 touch "$MOCK_LOG" "$MOCK_FOLDERS"
 printf '0\n' > "$MOCK_SOURCE_COUNT"
+printf '0\n' > "$MOCK_POLICY_COUNT"
 
 cleanup() {
     local folder
@@ -32,7 +34,7 @@ az() {
         return
     fi
     [[ "$1" == rest ]] || { printf 'Unexpected mocked Azure command.\n' >&2; return 1; }
-    local url='' tail instance path marker='unchanged' read_count
+    local url='' tail instance path marker='unchanged' read_count request_arguments=" $* "
     while (( $# )); do
         if [[ "$1" == --url ]]; then url="$2"; break; fi
         shift
@@ -49,6 +51,18 @@ az() {
     else
         path="${url#*/apis/}"
         path="${path%%\?*}"
+        if [[ "$path" == poc-rest/operations/get-status/policies/policy ]]; then
+            if [[ "$request_arguments" != *' --headers Accept=application/json '* ]]; then
+                printf '\357\273\277<policies><inbound /></policies>\n'
+                return
+            fi
+            if [[ "$MOCK_CHANGED_POLICY" == 1 ]]; then
+                read_count="$(< "$MOCK_POLICY_COUNT")"
+                read_count=$((read_count + 1))
+                printf '%s\n' "$read_count" > "$MOCK_POLICY_COUNT"
+                if (( read_count > 1 )); then marker='changed'; fi
+            fi
+        fi
         if [[ "$instance" == src && "$path" == poc-rest && "$MOCK_CHANGED_SOURCE" == 1 ]]; then
             read_count="$(< "$MOCK_SOURCE_COUNT")"
             read_count=$((read_count + 1))
@@ -58,6 +72,10 @@ az() {
         command node --input-type=module - "$instance" "$path" "$marker" <<'NODE'
 const [instance, path, marker] = process.argv.slice(2);
 const properties = { path: path === 'poc-proxy' ? 'poc-proxy/mcp' : path, marker };
+if (path.endsWith('/policies/policy')) {
+    properties.format = 'xml';
+    properties.value = `<policies><inbound><base /></inbound><!-- ${marker} --></policies>`;
+}
 if (instance === 'dst' && process.env.MOCK_BAD_PATH === '1') properties.path = 'wrong';
 if (path === 'poc-native') {
     const target = process.env.MOCK_WRONG_BINDING === '1' ? 'src' : instance;
@@ -154,7 +172,7 @@ grep -qx 'mcp|https://dst.example.test|target|dst-key' "$MOCK_LOG" || fail_test 
 [[ "$AZURE_API_VERSION" == previous-version && "$POC_APIM_KEY" == previous-key ]] ||
     fail_test 'Parent environment changed.'
 
-for scenario in MOCK_WRONG_BINDING MOCK_BAD_METADATA MOCK_FAIL_PUBLISH MOCK_BAD_PATH MOCK_CHANGED_SOURCE; do
+for scenario in MOCK_WRONG_BINDING MOCK_BAD_METADATA MOCK_FAIL_PUBLISH MOCK_BAD_PATH MOCK_CHANGED_SOURCE MOCK_CHANGED_POLICY; do
     export "$scenario=1"
     if "${promote[@]}" --apply > "$MOCK_DIR/failure.log" 2>&1; then
         fail_test "$scenario should have failed."
@@ -164,7 +182,7 @@ for scenario in MOCK_WRONG_BINDING MOCK_BAD_METADATA MOCK_FAIL_PUBLISH MOCK_BAD_
         MOCK_BAD_METADATA) grep -q 'Extraction lost REST-to-MCP' "$MOCK_DIR/failure.log" ;;
         MOCK_FAIL_PUBLISH) grep -q 'exit 9' "$MOCK_DIR/failure.log" ;;
         MOCK_BAD_PATH) grep -q 'canonical gateway path' "$MOCK_DIR/failure.log" ;;
-        MOCK_CHANGED_SOURCE) grep -q 'Source API configuration changed' "$MOCK_DIR/failure.log" ;;
+        MOCK_CHANGED_SOURCE|MOCK_CHANGED_POLICY) grep -q 'Source API configuration changed' "$MOCK_DIR/failure.log" ;;
     esac
     export "$scenario=0"
 done

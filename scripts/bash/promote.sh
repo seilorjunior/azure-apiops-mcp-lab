@@ -50,7 +50,7 @@ target_key="$(get_test_key "$target_service")"
 source_snapshot() {
     local path
     for path in poc-rest poc-native poc-proxy poc-rest/operations/get-status poc-rest/operations/get-status/policies/policy; do
-        az_json rest --url "$service/apis/$path?api-version=$API_VERSION" |
+        az_json rest --url "$service/apis/$path?api-version=$API_VERSION" --headers Accept=application/json |
             node --input-type=module -e '
                 import { readFileSync } from "node:fs";
                 const value = JSON.parse(readFileSync(0, "utf8")).properties;

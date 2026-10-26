@@ -25,7 +25,8 @@ function Get-SourceSnapshot {
     $snapshot = [ordered]@{}
     foreach ($path in @('poc-rest', 'poc-native', 'poc-proxy',
         'poc-rest/operations/get-status', 'poc-rest/operations/get-status/policies/policy')) {
-        $resource = Invoke-AzJson -Arguments @('rest', '--url', "$service/apis/${path}?api-version=$script:ApiVersion")
+        $resource = Invoke-AzJson -Arguments @('rest', '--url', "$service/apis/${path}?api-version=$script:ApiVersion",
+            '--headers', 'Accept=application/json')
         $snapshot[$path] = $resource.properties
     }
     $snapshot | ConvertTo-Json -Depth 100 -Compress
