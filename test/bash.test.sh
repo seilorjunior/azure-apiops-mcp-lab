@@ -7,6 +7,7 @@ export MOCK_FOLDERS="$MOCK_DIR/folders.log"
 export MOCK_SOURCE_COUNT="$MOCK_DIR/source-count"
 export MOCK_POLICY_COUNT="$MOCK_DIR/policy-count"
 export MOCK_WRONG_BINDING=0 MOCK_BAD_METADATA=0 MOCK_NPM_EXIT=0 MOCK_FAIL_PUBLISH=0 MOCK_BAD_PATH=0 MOCK_CHANGED_SOURCE=0 MOCK_CHANGED_POLICY=0
+export MOCK_PROXY_METADATA=canonical MOCK_BAD_PROXY=none
 touch "$MOCK_LOG" "$MOCK_FOLDERS"
 printf '0\n' > "$MOCK_SOURCE_COUNT"
 printf '0\n' > "$MOCK_POLICY_COUNT"
@@ -72,6 +73,13 @@ az() {
         command node --input-type=module - "$instance" "$path" "$marker" <<'NODE'
 const [instance, path, marker] = process.argv.slice(2);
 const properties = { path: path === 'poc-proxy' ? 'poc-proxy/mcp' : path, marker };
+if (path === 'poc-proxy') {
+    properties.type = 'mcp';
+    properties.backendId = 'poc-mcp-backend';
+    properties.mcpProperties = process.env.MOCK_PROXY_METADATA === 'legacy'
+        ? { transportType: 'streamable' }
+        : { endpoints: null, federation: null, isFederationRouter: false };
+}
 if (path.endsWith('/policies/policy')) {
     properties.format = 'xml';
     properties.value = `<policies><inbound><base /></inbound><!-- ${marker} --></policies>`;
@@ -121,8 +129,18 @@ for (const name of ['poc-rest', 'poc-native', 'poc-proxy']) {
     mkdirSync(directory, { recursive: true });
     const properties = {
         mcpTools: [{ name: process.env.MOCK_BAD_METADATA === '1' ? 'wrong' : 'get_status' }],
-        mcpProperties: { transportType: 'streamable' },
+        type: 'mcp',
+        backendId: 'poc-mcp-backend',
+        mcpProperties: process.env.MOCK_PROXY_METADATA === 'legacy'
+            ? { transportType: 'streamable' }
+            : { endpoints: null, federation: null, isFederationRouter: false },
     };
+    if (name === 'poc-proxy') {
+        if (process.env.MOCK_BAD_PROXY === 'missing') delete properties.mcpProperties;
+        if (process.env.MOCK_BAD_PROXY === 'changed') properties.mcpProperties = { transportType: 'sse' };
+        if (process.env.MOCK_BAD_PROXY === 'backend') properties.backendId = 'wrong-backend';
+        if (process.env.MOCK_BAD_PROXY === 'type') properties.type = 'http';
+    }
     writeFileSync(join(directory, 'apiInformation.json'), JSON.stringify({ properties }));
 }
 NODE
@@ -185,6 +203,16 @@ for scenario in MOCK_WRONG_BINDING MOCK_BAD_METADATA MOCK_FAIL_PUBLISH MOCK_BAD_
         MOCK_CHANGED_SOURCE|MOCK_CHANGED_POLICY) grep -q 'Source API configuration changed' "$MOCK_DIR/failure.log" ;;
     esac
     export "$scenario=0"
+done
+
+MOCK_PROXY_METADATA=legacy "${promote[@]}"
+for scenario in missing changed backend type; do
+    : > "$MOCK_LOG"
+    if MOCK_BAD_PROXY="$scenario" "${promote[@]}" --apply > "$MOCK_DIR/failure.log" 2>&1; then
+        fail_test "Proxy metadata $scenario must fail."
+    fi
+    grep -q 'Extraction lost\|Extraction changed' "$MOCK_DIR/failure.log"
+    ! grep -q '^publish|' "$MOCK_LOG" || fail_test 'Invalid proxy metadata must block all publisher calls.'
 done
 
 : > "$MOCK_LOG"

@@ -307,7 +307,12 @@ artifacts/
 
 This is a schematic layout, not a promise of every extractor filename.
 `poc-native` must retain `properties.mcpTools` containing `get_status`.
-`poc-proxy` must retain `properties.mcpProperties.transportType` equal to `streamable`.
+`poc-proxy` must retain its MCP API type, backend binding and the complete
+`properties.mcpProperties` returned by the source management API. The shared
+[artifact validator](../scripts/validate-extraction.mjs) compares these against
+the pre-extraction source snapshot. Azure can return canonical MCP metadata
+without `transportType`, even when the deployed request specified `streamable`;
+the validator does not invent a missing transport field.
 MCP APIs intentionally do not receive an OpenAPI specification export.
 
 Only APIs and their children are selected by

@@ -153,9 +153,16 @@ poc-native
 poc-proxy
 ```
 
-The native API must retain `mcpTools`; the proxy must retain
-`mcpProperties.transportType: streamable`. Lack of an exported OpenAPI document for
-a native MCP API is expected, not automatically a failure.
+The native API must retain `mcpTools`; the proxy must retain its MCP type,
+backend binding and the `mcpProperties` actually returned by the source.
+An older assertion required `mcpProperties.transportType: streamable`, but Azure
+can return canonical metadata such as `endpoints`, `federation` and
+`isFederationRouter` without that field. The shared validator now compares the
+extracted MCP configuration to the source snapshot rather than that deployment
+input shape. Missing or changed configuration still blocks publication.
+Do not add a fabricated `transportType` to the artifacts to satisfy the old check.
+Lack of an exported OpenAPI document for a native MCP API is expected, not
+automatically a failure.
 
 Do not compensate by creating the target APIs with Bicep or the portal: that bypasses
 the behavior the PoC is intended to test.

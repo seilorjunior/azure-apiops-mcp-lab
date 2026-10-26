@@ -45,18 +45,8 @@ try {
     $context = @('--subscription-id', $script:SubscriptionId, '--resource-group', $ResourceGroup)
     Invoke-Checked -Command $cli -Arguments (@('extract') + $context + @('--service-name', $SourceApimName) +
         @('--output', $folder, '--filter', $filter, '--no-transitive'))
-    $actualNames = @(Get-ChildItem -LiteralPath (Join-Path $folder 'apis') -Directory | Select-Object -ExpandProperty Name)
-    if ((($actualNames | Sort-Object) -join ',') -ne (($sourceNames | Sort-Object) -join ',')) {
-        throw "Extraction did not return exactly the three source APIs: $($actualNames -join ',')."
-    }
-    $nativeInfo = Get-Content -LiteralPath (Join-Path $folder 'apis\poc-native\apiInformation.json') -Raw | ConvertFrom-Json
-    if (-not $nativeInfo.properties.mcpTools -or $nativeInfo.properties.mcpTools[0].name -ne 'get_status') {
-        throw 'Extraction lost REST-to-MCP tool bindings.'
-    }
-    $proxyInfo = Get-Content -LiteralPath (Join-Path $folder 'apis\poc-proxy\apiInformation.json') -Raw | ConvertFrom-Json
-    if ($proxyInfo.properties.mcpProperties.transportType -ne 'streamable') {
-        throw 'Extraction lost external MCP transport configuration.'
-    }
+    $before | & node (Join-Path $script:Root 'scripts\validate-extraction.mjs') $folder
+    if ($LASTEXITCODE -ne 0) { throw 'Extracted API configuration validation failed.' }
     $publish = @('publish') + $context + @('--service-name', $TargetApimName,
         '--source', $folder, '--filter', $filter, '--no-transitive')
     Invoke-Checked -Command $cli -Arguments ($publish + @('--dry-run'))

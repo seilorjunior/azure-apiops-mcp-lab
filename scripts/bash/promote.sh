@@ -55,9 +55,13 @@ source_snapshot() {
                 import { readFileSync } from "node:fs";
                 const value = JSON.parse(readFileSync(0, "utf8")).properties;
                 if (!value) throw new Error("Source resource properties are missing.");
-                process.stdout.write(JSON.stringify(value) + "\n");
-            '
-    done
+                process.stdout.write(JSON.stringify({ [process.argv[1]]: value }) + "\n");
+            ' "$path"
+    done | node --input-type=module -e '
+        import { readFileSync } from "node:fs";
+        const entries = readFileSync(0, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+        process.stdout.write(JSON.stringify(Object.assign({}, ...entries)));
+    '
 }
 
 cd -- "$ROOT"
@@ -70,21 +74,7 @@ filter="$ROOT/config/source-filter.yaml"
 context=(--subscription-id "$SUBSCRIPTION_ID" --resource-group "$resource_group")
 "${cli[@]}" extract "${context[@]}" --service-name "$source_apim" \
     --output "$folder" --filter "$filter" --no-transitive
-node --input-type=module - "$folder" <<'NODE'
-import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
-const root = process.argv[2];
-const apis = readdirSync(join(root, 'apis'), { withFileTypes: true })
-    .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
-assert.deepEqual(apis, ['poc-native', 'poc-proxy', 'poc-rest'],
-    'Extraction did not return exactly the three source APIs.');
-const info = (name) => JSON.parse(readFileSync(join(root, 'apis', name, 'apiInformation.json'), 'utf8'));
-assert.equal(info('poc-native').properties?.mcpTools?.[0]?.name, 'get_status',
-    'Extraction lost REST-to-MCP tool bindings.');
-assert.equal(info('poc-proxy').properties?.mcpProperties?.transportType, 'streamable',
-    'Extraction lost external MCP transport configuration.');
-NODE
+printf '%s' "$before" | node "$ROOT/scripts/validate-extraction.mjs" "$folder"
 publish=(publish "${context[@]}" --service-name "$target_apim" --source "$folder" --filter "$filter" --no-transitive)
 "${cli[@]}" "${publish[@]}" --dry-run
 if [[ "$apply" == false ]]; then

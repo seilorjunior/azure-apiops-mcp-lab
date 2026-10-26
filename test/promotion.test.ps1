@@ -9,6 +9,8 @@ $global:ApiopsPromotionMock = @{
     WrongBinding = $false
     ChangedPolicy = $false
     PolicyReads = 0
+    ProxyMetadata = 'canonical'
+    BadProxy = 'none'
     ArmScope = '/subscriptions/00000000-0000-4000-8000-000000000001/resourceGroups/test-rg/providers/Microsoft.ApiManagement/service'
 }
 
@@ -46,7 +48,14 @@ function az {
             ConvertTo-Json -Depth 20)
     }
     $properties = @{ path = $path; marker = 'unchanged' }
-    if ($path -eq 'poc-proxy') { $properties.path = 'poc-proxy/mcp' }
+    if ($path -eq 'poc-proxy') {
+        $properties.path = 'poc-proxy/mcp'
+        $properties.type = 'mcp'
+        $properties.backendId = 'poc-mcp-backend'
+        $properties.mcpProperties = if ($global:ApiopsPromotionMock.ProxyMetadata -eq 'legacy') {
+            @{ transportType = 'streamable' }
+        } else { @{ endpoints = $null; federation = $null; isFederationRouter = $false } }
+    }
     if ($path -eq 'poc-native') {
         $bindingInstance = if ($global:ApiopsPromotionMock.WrongBinding) { 'src' } else { $instance }
         $properties.mcpTools = @(@{
@@ -59,6 +68,12 @@ function az {
 
 function node {
     $arguments = @($args)
+    if ($arguments[0] -like '*validate-extraction.mjs') {
+        $executable = (Get-Command node -CommandType Application | Select-Object -First 1).Source
+        $input | & $executable @arguments
+        $global:LASTEXITCODE = $LASTEXITCODE
+        return
+    }
     $global:ApiopsPromotionMock.Calls.Add(@{ kind = 'mcp'; gateway = $arguments[1]; environment = $arguments[2]; key = $env:POC_APIM_KEY })
     $global:LASTEXITCODE = 0
 }
@@ -78,12 +93,24 @@ function Invoke-MockApiops {
         foreach ($name in @('poc-rest', 'poc-native', 'poc-proxy')) {
             $directory = Join-Path $folder "apis\$name"
             $null = New-Item -ItemType Directory -Path $directory -Force
-            @{
-                properties = @{
+            $properties = @{
                     mcpTools = @(@{ name = 'get_status' })
-                    mcpProperties = @{ transportType = 'streamable' }
+                    type = 'mcp'
+                    backendId = 'poc-mcp-backend'
+                    mcpProperties = if ($global:ApiopsPromotionMock.ProxyMetadata -eq 'legacy') {
+                        @{ transportType = 'streamable' }
+                    } else { @{ endpoints = $null; federation = $null; isFederationRouter = $false } }
+            }
+            if ($name -eq 'poc-proxy') {
+                switch ($global:ApiopsPromotionMock.BadProxy) {
+                    missing { $properties.Remove('mcpProperties') }
+                    changed { $properties.mcpProperties = @{ transportType = 'sse' } }
+                    backend { $properties.backendId = 'wrong-backend' }
+                    type { $properties.type = 'http' }
                 }
-            } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $directory 'apiInformation.json')
+            }
+            @{ properties = $properties } | ConvertTo-Json -Depth 20 |
+                Set-Content -LiteralPath (Join-Path $directory 'apiInformation.json')
         }
     } else {
         Assert-Mock ($arguments[0] -eq 'publish' -and $instance -eq 'dst') 'Publication must use target APIM.'
@@ -112,6 +139,24 @@ try {
     Assert-Mock ($tests[0].gateway -eq 'https://src.example.test' -and $tests[0].key -eq 'src-key') 'Source gateway/key mismatch.'
     Assert-Mock ($tests[2].gateway -eq 'https://dst.example.test' -and $tests[2].key -eq 'dst-key') 'Target gateway/key mismatch.'
     Assert-Mock ($env:POC_APIM_KEY -eq 'test-previous-key') 'Subscription-key environment was not restored.'
+
+    $global:ApiopsPromotionMock.ProxyMetadata = 'legacy'
+    & $promote -ResourceGroup test-rg -SourceApimName src -TargetApimName dst
+    $global:ApiopsPromotionMock.ProxyMetadata = 'canonical'
+    foreach ($scenario in @('missing', 'changed', 'backend', 'type')) {
+        $global:ApiopsPromotionMock.BadProxy = $scenario
+        $global:ApiopsPromotionMock.Calls.Clear()
+        $rejected = $false
+        try {
+            & $promote -ResourceGroup test-rg -SourceApimName src -TargetApimName dst -Apply *> $null
+        } catch {
+            if ($_.Exception.Message -notmatch 'Extracted API configuration validation failed') { throw }
+            $rejected = $true
+        }
+        Assert-Mock $rejected "Proxy metadata $scenario must fail validation."
+        Assert-Mock (@($global:ApiopsPromotionMock.Calls | Where-Object kind -eq 'publish').Count -eq 0) 'Invalid proxy metadata must block publisher calls.'
+    }
+    $global:ApiopsPromotionMock.BadProxy = 'none'
 
     $global:ApiopsPromotionMock.ChangedPolicy = $true
     $global:ApiopsPromotionMock.PolicyReads = 0
