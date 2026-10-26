@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="690" viewBox="0 0 1040 690" role="img" aria-labelledby="title description">
+  <title id="title">APIops and APIM MCP lab architecture</title>
+  <desc id="description">MCP clients use separate subscription keys for source and target Developer-tier APIM gateways. Native tools call instance-local mock REST APIs. Proxy tools use a shared App Service backend. APIops extracts source configuration to local artifacts and publishes to target. Azure Developer CLI and Bicep provision the lab.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 Z" fill="#315777"/>
+    </marker>
+    <style>
+      text { font-family: "Segoe UI", Arial, sans-serif; fill: #17334d; }
+      .heading { font-size: 23px; font-weight: 700; }
+      .title { font-size: 18px; font-weight: 700; }
+      .body { font-size: 15px; }
+      .label { font-size: 13px; fill: #315777; }
+      .line { fill: none; stroke: #315777; stroke-width: 2; marker-end: url(#arrow); }
+      .control { fill: none; stroke: #315777; stroke-width: 2; stroke-dasharray: 6 5; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect width="1040" height="690" rx="16" fill="#ffffff"/>
+  <text x="40" y="42" class="heading">APIops + APIM MCP lab</text>
+  <text x="40" y="68" class="body">Two gateways. One shared backend. Configuration promoted independently of application code.</text>
+
+  <rect x="40" y="178" width="960" height="470" rx="14" fill="#f3f7fb" stroke="#a9c1d7"/>
+  <text x="62" y="207" class="body">Azure subscription / one resource group / selected region</text>
+
+  <rect x="350" y="94" width="340" height="66" rx="10" fill="#e9f2ff" stroke="#3479b9"/>
+  <text x="520" y="122" text-anchor="middle" class="title">MCP client / smoke tests</text>
+  <text x="520" y="145" text-anchor="middle" class="body">initialize - tools/list - tools/call</text>
+
+  <rect x="90" y="254" width="330" height="130" rx="10" fill="#ffffff" stroke="#3479b9" stroke-width="2"/>
+  <text x="255" y="284" text-anchor="middle" class="title">Source APIM</text>
+  <text x="255" y="307" text-anchor="middle" class="body">Developer / capacity 1</text>
+  <text x="255" y="339" text-anchor="middle" class="body">Native tool - local REST mock</text>
+  <text x="255" y="362" text-anchor="middle" class="body">Proxy tool - shared MCP backend</text>
+
+  <rect x="620" y="254" width="330" height="130" rx="10" fill="#ffffff" stroke="#3479b9" stroke-width="2"/>
+  <text x="785" y="284" text-anchor="middle" class="title">Target APIM</text>
+  <text x="785" y="307" text-anchor="middle" class="body">Developer / capacity 1</text>
+  <text x="785" y="339" text-anchor="middle" class="body">Native tool - target REST mock</text>
+  <text x="785" y="362" text-anchor="middle" class="body">Proxy tool - shared MCP backend</text>
+
+  <path d="M 420 160 L 255 232 L 255 252" class="line"/>
+  <path d="M 620 160 L 785 232 L 785 252" class="line"/>
+  <text x="170" y="232" class="label">HTTPS + source subscription key</text>
+  <text x="686" y="232" class="label">HTTPS + target subscription key</text>
+
+  <path d="M 420 292 L 618 292" class="line"/>
+  <rect x="437" y="263" width="166" height="20" fill="#f3f7fb"/>
+  <text x="520" y="278" text-anchor="middle" class="label">APIops extract / publish</text>
+  <text x="520" y="316" text-anchor="middle" class="label">via local artifacts</text>
+  <text x="520" y="337" text-anchor="middle" class="label">target ARM references</text>
+
+  <rect x="330" y="465" width="380" height="98" rx="10" fill="#e8f6f0" stroke="#388065" stroke-width="2"/>
+  <text x="520" y="496" text-anchor="middle" class="title">Shared external MCP backend</text>
+  <text x="520" y="521" text-anchor="middle" class="body">App Service B1 / Node.js 22 / echo tool</text>
+  <text x="520" y="545" text-anchor="middle" class="body">Stateless Streamable HTTP</text>
+  <path d="M 255 384 L 255 430 L 420 430 L 420 463" class="line"/>
+  <path d="M 785 384 L 785 430 L 620 430 L 620 463" class="line"/>
+  <text x="520" y="411" text-anchor="middle" class="label">Proxy path only: HTTPS + backend credential</text>
+
+  <rect x="78" y="580" width="240" height="47" rx="8" fill="#ffffff" stroke="#a9c1d7"/>
+  <text x="198" y="610" text-anchor="middle" class="body">azd + Bicep</text>
+  <path d="M 318 603 L 705 603 L 705 565" class="control"/>
+  <text x="518" y="594" text-anchor="middle" class="label">Provision infrastructure and deploy backend</text>
+  <text x="40" y="674" class="label">Solid arrows: traffic and configuration flow. Dashed arrow: deployment control.</text>
+</svg>

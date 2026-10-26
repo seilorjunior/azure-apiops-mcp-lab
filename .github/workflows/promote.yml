@@ -1,0 +1,116 @@
+name: Promote APIM APIs
+run-name: APIM promotion (${{ inputs.mode }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Preview changes or publish and verify the target APIs
+        type: choice
+        required: true
+        default: dry-run
+        options:
+          - dry-run
+          - apply
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apim-promotion
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: ${{ inputs.mode }} APIM promotion
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment:
+      name: ${{ inputs.mode == 'apply' && 'apim-promotion' || 'apim-preview' }}
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      PROMOTION_MODE: ${{ inputs.mode }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      SOURCE_APIM_NAME: ${{ vars.SOURCE_APIM_NAME }}
+      TARGET_APIM_NAME: ${{ vars.TARGET_APIM_NAME }}
+      AZURE_CORE_OUTPUT: none
+
+    steps:
+      - name: Require the default branch and a supported mode
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]]; then
+            echo "::error::Promotion must run from the repository default branch."
+            exit 1
+          fi
+          case "$PROMOTION_MODE" in
+            dry-run|apply) ;;
+            *) echo "::error::Unsupported promotion mode."; exit 1 ;;
+          esac
+
+      - name: Check out trusted repository code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      - name: Validate promotion configuration
+        run: |
+          source scripts/bash/common.sh
+          for name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID \
+            AZURE_RESOURCE_GROUP SOURCE_APIM_NAME TARGET_APIM_NAME; do
+            [[ -n "${!name}" ]] || fail "Missing GitHub variable: $name"
+          done
+          [[ "$AZURE_SUBSCRIPTION_ID" == "$SUBSCRIPTION_ID" ]] ||
+            fail 'AZURE_SUBSCRIPTION_ID must match the approved subscription in common.sh.'
+          [[ "$SOURCE_APIM_NAME" != "$TARGET_APIM_NAME" ]] ||
+            fail 'Source and target APIM instances must be different.'
+
+      - name: Restore pinned dependencies
+        run: npm ci
+
+      - name: Run backend and Bash regression tests
+        run: npm test
+
+      - name: Sign in to Azure with OIDC
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          audience: api://AzureADTokenExchange
+
+      - name: Extract, preview, and optionally publish and verify
+        run: |
+          args=(
+            --resource-group "$AZURE_RESOURCE_GROUP"
+            --source-apim-name "$SOURCE_APIM_NAME"
+            --target-apim-name "$TARGET_APIM_NAME"
+          )
+          if [[ "$PROMOTION_MODE" == apply ]]; then
+            args+=(--apply)
+          fi
+          bash scripts/bash/promote.sh "${args[@]}"
+
+      - name: Record successful outcome
+        run: |
+          if [[ "$PROMOTION_MODE" == apply ]]; then
+            echo '### PASS: target APIs published and both gateways verified' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Target bindings and paths passed; the source snapshot was unchanged.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '### PASS: source MCP checks, extraction and publisher dry-run' >> "$GITHUB_STEP_SUMMARY"
+            echo 'No target APIs were published. Review the publisher output before requesting apply.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo 'Extracted artifacts are intentionally not uploaded.' >> "$GITHUB_STEP_SUMMARY"

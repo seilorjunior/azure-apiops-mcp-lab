@@ -1,0 +1,191 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+MOCK_DIR="$(mktemp -d)"
+export MOCK_LOG="$MOCK_DIR/calls.log"
+export MOCK_FOLDERS="$MOCK_DIR/folders.log"
+export MOCK_SOURCE_COUNT="$MOCK_DIR/source-count"
+export MOCK_WRONG_BINDING=0 MOCK_BAD_METADATA=0 MOCK_NPM_EXIT=0 MOCK_FAIL_PUBLISH=0 MOCK_BAD_PATH=0 MOCK_CHANGED_SOURCE=0
+touch "$MOCK_LOG" "$MOCK_FOLDERS"
+printf '0\n' > "$MOCK_SOURCE_COUNT"
+
+cleanup() {
+    local folder
+    while IFS= read -r folder; do
+        case "$folder" in
+            "$ROOT"/artifacts/run-*) rm -rf -- "$folder" ;;
+            *) printf 'Unexpected mock artifact path; refusing cleanup.\n' >&2; return 1 ;;
+        esac
+    done < "$MOCK_FOLDERS"
+    rm -rf -- "$MOCK_DIR"
+}
+trap cleanup EXIT
+
+fail_test() {
+    printf 'FAIL: %s\n' "$*" >&2
+    exit 1
+}
+
+az() {
+    if [[ "$1" == account && "$2" == show ]]; then
+        printf '{"id":"00000000-0000-4000-8000-000000000001"}\n'
+        return
+    fi
+    [[ "$1" == rest ]] || { printf 'Unexpected mocked Azure command.\n' >&2; return 1; }
+    local url='' tail instance path marker='unchanged' read_count
+    while (( $# )); do
+        if [[ "$1" == --url ]]; then url="$2"; break; fi
+        shift
+    done
+    tail="${url#*/service/}"
+    instance="${tail%%/*}"
+    instance="${instance%%\?*}"
+    [[ "$instance" == src || "$instance" == dst ]] ||
+        { printf 'Unexpected mocked APIM scope.\n' >&2; return 1; }
+    if [[ "$url" == *'/listSecrets?'* ]]; then
+        printf '{"primaryKey":"%s-key"}\n' "$instance"
+    elif [[ "$url" != *'/apis/'* ]]; then
+        printf '{"properties":{"gatewayUrl":"https://%s.example.test"}}\n' "$instance"
+    else
+        path="${url#*/apis/}"
+        path="${path%%\?*}"
+        if [[ "$instance" == src && "$path" == poc-rest && "$MOCK_CHANGED_SOURCE" == 1 ]]; then
+            read_count="$(< "$MOCK_SOURCE_COUNT")"
+            read_count=$((read_count + 1))
+            printf '%s\n' "$read_count" > "$MOCK_SOURCE_COUNT"
+            if (( read_count > 1 )); then marker='changed'; fi
+        fi
+        command node --input-type=module - "$instance" "$path" "$marker" <<'NODE'
+const [instance, path, marker] = process.argv.slice(2);
+const properties = { path: path === 'poc-proxy' ? 'poc-proxy/mcp' : path, marker };
+if (instance === 'dst' && process.env.MOCK_BAD_PATH === '1') properties.path = 'wrong';
+if (path === 'poc-native') {
+    const target = process.env.MOCK_WRONG_BINDING === '1' ? 'src' : instance;
+    properties.mcpTools = [{
+        name: 'get_status',
+        operationId: `/subscriptions/00000000-0000-4000-8000-000000000001/resourceGroups/test-rg/providers/Microsoft.ApiManagement/service/${target}/apis/poc-rest/operations/get-status`,
+    }];
+}
+console.log(JSON.stringify({ properties }));
+NODE
+    fi
+}
+
+node() {
+    if [[ "${1:-}" == */scripts/test-mcp.mjs ]]; then
+        printf 'mcp|%s|%s|%s\n' "$2" "$3" "${POC_APIM_KEY:-}" >> "$MOCK_LOG"
+    elif [[ "${1:-}" == */@azure-tools/apiops-cli/dist/cli/index.js ]]; then
+        shift
+        local operation="$1" instance='' folder='' dry_run=false
+        [[ "${AZURE_API_VERSION:-}" == '2025-09-01-preview' ]] ||
+            { printf 'Wrong API version.\n' >&2; return 1; }
+        [[ " $* " == *' --no-transitive '* ]] ||
+            { printf 'Missing dependency guard.\n' >&2; return 1; }
+        [[ " $* " != *' --delete-unmatched '* && " $* " != *' --overrides '* ]] ||
+            { printf 'Unexpected deletion or name override.\n' >&2; return 1; }
+        while (( $# )); do
+            case "$1" in
+                --service-name) instance="$2"; shift ;;
+                --output) folder="$2"; shift ;;
+                --dry-run) dry_run=true ;;
+            esac
+            shift
+        done
+        printf '%s|%s|%s\n' "$operation" "$instance" "$dry_run" >> "$MOCK_LOG"
+        if [[ "$operation" == extract ]]; then
+            [[ "$instance" == src ]] || { printf 'Extraction used wrong instance.\n' >&2; return 1; }
+            printf '%s\n' "$folder" >> "$MOCK_FOLDERS"
+            command node --input-type=module - "$folder" <<'NODE'
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+for (const name of ['poc-rest', 'poc-native', 'poc-proxy']) {
+    const directory = join(process.argv[2], 'apis', name);
+    mkdirSync(directory, { recursive: true });
+    const properties = {
+        mcpTools: [{ name: process.env.MOCK_BAD_METADATA === '1' ? 'wrong' : 'get_status' }],
+        mcpProperties: { transportType: 'streamable' },
+    };
+    writeFileSync(join(directory, 'apiInformation.json'), JSON.stringify({ properties }));
+}
+NODE
+        elif [[ "$operation" == publish ]]; then
+            [[ "$instance" == dst ]] || { printf 'Publication used wrong instance.\n' >&2; return 1; }
+            if [[ "$MOCK_FAIL_PUBLISH" == 1 && "$dry_run" == false ]]; then return 9; fi
+        else
+            printf 'Unexpected CLI operation.\n' >&2
+            return 1
+        fi
+    else
+        command node "$@"
+    fi
+}
+
+npm() {
+    [[ "$*" == test ]] || { printf 'Unexpected npm operation.\n' >&2; return 1; }
+    printf 'npm-test\n' >> "$MOCK_LOG"
+    return "$MOCK_NPM_EXIT"
+}
+
+curl() {
+    printf '{"status":"ok"}\n'
+}
+export -f az node npm curl
+
+promote=(bash "$ROOT/scripts/bash/promote.sh" --resource-group test-rg --source-apim-name src --target-apim-name dst)
+export AZURE_API_VERSION='previous-version' POC_APIM_KEY='previous-key'
+"${promote[@]}"
+grep -qx 'extract|src|false' "$MOCK_LOG" || fail_test 'Source extraction missing.'
+grep -qx 'publish|dst|true' "$MOCK_LOG" || fail_test 'Dry-run missing.'
+! grep -qx 'publish|dst|false' "$MOCK_LOG" || fail_test 'Default run applied changes.'
+
+: > "$MOCK_LOG"
+"${promote[@]}" --apply
+grep -qx 'publish|dst|true' "$MOCK_LOG" || fail_test 'Apply must preview.'
+grep -qx 'publish|dst|false' "$MOCK_LOG" || fail_test 'Apply must publish.'
+[[ "$(grep -c '^mcp|' "$MOCK_LOG")" == 3 ]] || fail_test 'Wrong MCP test count.'
+grep -qx 'mcp|https://src.example.test|source|src-key' "$MOCK_LOG" || fail_test 'Wrong source key/gateway.'
+grep -qx 'mcp|https://dst.example.test|target|dst-key' "$MOCK_LOG" || fail_test 'Wrong target key/gateway.'
+[[ "$AZURE_API_VERSION" == previous-version && "$POC_APIM_KEY" == previous-key ]] ||
+    fail_test 'Parent environment changed.'
+
+for scenario in MOCK_WRONG_BINDING MOCK_BAD_METADATA MOCK_FAIL_PUBLISH MOCK_BAD_PATH MOCK_CHANGED_SOURCE; do
+    export "$scenario=1"
+    if "${promote[@]}" --apply > "$MOCK_DIR/failure.log" 2>&1; then
+        fail_test "$scenario should have failed."
+    fi
+    case "$scenario" in
+        MOCK_WRONG_BINDING) grep -q 'Target MCP tool still references' "$MOCK_DIR/failure.log" ;;
+        MOCK_BAD_METADATA) grep -q 'Extraction lost REST-to-MCP' "$MOCK_DIR/failure.log" ;;
+        MOCK_FAIL_PUBLISH) grep -q 'exit 9' "$MOCK_DIR/failure.log" ;;
+        MOCK_BAD_PATH) grep -q 'canonical gateway path' "$MOCK_DIR/failure.log" ;;
+        MOCK_CHANGED_SOURCE) grep -q 'Source API configuration changed' "$MOCK_DIR/failure.log" ;;
+    esac
+    export "$scenario=0"
+done
+if bash "$ROOT/scripts/bash/promote.sh" --resource-group test-rg --source-apim-name src --target-apim-name src \
+    > "$MOCK_DIR/failure.log" 2>&1; then
+    fail_test 'Identical instances must fail.'
+fi
+grep -q 'must be different' "$MOCK_DIR/failure.log"
+if bash "$ROOT/scripts/bash/promote.sh" --resource-group > "$MOCK_DIR/failure.log" 2>&1; then
+    fail_test 'Missing option value must fail.'
+fi
+
+export AZURE_SUBSCRIPTION_ID='00000000-0000-4000-8000-000000000001'
+unset POC_BACKEND_KEY
+bash "$ROOT/scripts/bash/preprovision.sh"
+POC_BACKEND_KEY='test-only-key-with-at-least-32-characters' bash "$ROOT/scripts/bash/preprovision.sh"
+if AZURE_SUBSCRIPTION_ID=wrong bash "$ROOT/scripts/bash/preprovision.sh" > "$MOCK_DIR/failure.log" 2>&1; then
+    fail_test 'Wrong subscription must fail.'
+fi
+if MOCK_NPM_EXIT=1 bash "$ROOT/scripts/bash/preprovision.sh" > "$MOCK_DIR/failure.log" 2>&1; then
+    fail_test 'Failed local tests must block provisioning.'
+fi
+
+export AZURE_RESOURCE_GROUP=test-rg SOURCE_APIM_NAME=src TARGET_APIM_NAME=dst
+export SOURCE_GATEWAY_URL=https://src.example.test BACKEND_URL=https://backend.example.test
+bash "$ROOT/scripts/bash/verify-source.sh"
+if BACKEND_URL='' bash "$ROOT/scripts/bash/verify-source.sh" > "$MOCK_DIR/failure.log" 2>&1; then
+    fail_test 'Missing azd output must fail.'
+fi
+printf '%s\n' 'PASS: Bash dry-run/apply, gateway/key selection, metadata/path/binding guards, CLI failures, preprovision and source verification.'

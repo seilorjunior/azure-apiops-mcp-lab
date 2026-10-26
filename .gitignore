@@ -1,0 +1,8 @@
+node_modules/
+artifacts/
+.local/
+*.zip
+infra/main.json
+.env
+.azure/*
+!.azure/deployment-plan.md
