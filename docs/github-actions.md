@@ -69,13 +69,28 @@ For each environment that identity will use, configure:
 | --- | --- |
 | Issuer | `https://token.actions.githubusercontent.com` |
 | Audience | `api://AzureADTokenExchange` |
-| Preview subject | `repo:OWNER/REPOSITORY:environment:apim-preview` |
-| Apply subject | `repo:OWNER/REPOSITORY:environment:apim-promotion` |
+| Preview subject | `PREFIX:environment:apim-preview` |
+| Apply subject | `PREFIX:environment:apim-promotion` |
 
-Replace `OWNER/REPOSITORY` with the exact GitHub repository name. Environment
-subjects are used instead of `ref:refs/heads/main` because the job references a
-GitHub environment. A branch subject alone will not match. Environment deployment
-branch restrictions are therefore essential, in addition to the workflow guard.
+Discover the repository's actual subject configuration before creating the trusts:
+
+```bash
+gh api repos/OWNER/REPOSITORY/actions/oidc/customization/sub
+```
+
+Replace `OWNER/REPOSITORY` with the exact repository name and `PREFIX` in the table
+with the returned `sub_claim_prefix`. For an immutable subject, the prefix contains
+both names and numeric IDs, such as
+`repo:OWNER@OWNER_ID/REPOSITORY@REPOSITORY_ID`. Older repositories may use
+`repo:OWNER/REPOSITORY`. Do not assume these formats are interchangeable.
+The exact `subject claim` reported by `azure/login` is authoritative; custom
+subject configurations can require a different full subject.
+
+Environment subjects are used instead of `ref:refs/heads/main` because the job
+references a GitHub environment. A branch subject alone will not match.
+Environment deployment branch restrictions are therefore essential, in addition
+to the workflow guard. Keep immutable subjects enabled; update Entra trusts to
+match rather than weakening GitHub's subject configuration.
 See [Microsoft's OIDC setup guide](https://learn.microsoft.com/azure/developer/github/connect-from-azure-openid-connect).
 
 For a straightforward **dedicated-lab** setup, assign **API Management Service
@@ -170,9 +185,19 @@ being inspected. Nothing runs automatically on push or pull requests.
   There is no automatic rollback or atomic transaction. Investigate with the
   [troubleshooting guide](troubleshooting.md), correct the cause, preview and
   reapply. Do not delete the lab or rerun azd merely to repair an API promotion.
-- OIDC subject/audience errors mean the federated credential and selected
-  environment do not match. `403` on `listSecrets` means management permissions
+- `AADSTS700213` means no federated credential matches the issued subject,
+  issuer and audience. Compare the full `azure/login` subject with the Entra
+  credential, including numeric owner/repository IDs for immutable subjects.
+  Update both environment trusts if they use the wrong prefix.
+- The login step overrides `AZURE_CORE_OUTPUT` to `json` because `azure/login`
+  parses `az version` output. Globally suppressing that output without this
+  override produces a separate CLI-version parsing warning.
+- `403` on `listSecrets` means management permissions
   are insufficient; gateway `401` is a separate APIM client authentication issue.
+- Correct federation alone does not grant subscription or APIM access. Without
+  Azure RBAC assignments, login can next fail with no accessible subscriptions.
+  Do not add permissions or bypass this with `allow-no-subscriptions` when access
+  has deliberately been withheld pending environment protection.
 - Existing dependency-advisory review gates still apply before giving this
   repository an Azure identity. Local/static validation is not proof of a
   successful GitHub-hosted or live Azure run.
