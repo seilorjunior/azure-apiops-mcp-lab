@@ -38,10 +38,16 @@ jobs:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
       AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
+      BACKEND_URL: ${{ vars.BACKEND_URL }}
       SOURCE_APIM_NAME: ${{ vars.SOURCE_APIM_NAME }}
+      SOURCE_GATEWAY_URL: ${{ vars.SOURCE_GATEWAY_URL }}
       TARGET_APIM_NAME: ${{ vars.TARGET_APIM_NAME }}
+      TARGET_GATEWAY_URL: ${{ vars.TARGET_GATEWAY_URL }}
       AZURE_CORE_OUTPUT: none
 
     steps:
@@ -84,6 +90,11 @@ jobs:
       - name: Run backend and Bash regression tests
         run: npm test
 
+      - name: Install APIops CLI
+        run: |
+          npm install -g @azure-tools/apiops-cli@1.0.5
+          apiops --version
+
       - name: Sign in to Azure with OIDC
         uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
         env:
@@ -95,6 +106,8 @@ jobs:
           audience: api://AzureADTokenExchange
 
       - name: Extract, preview, and optionally publish and verify
+        env:
+          APIOPS_USE_GLOBAL: 'true'
         run: |
           args=(
             --resource-group "$AZURE_RESOURCE_GROUP"

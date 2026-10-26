@@ -7,6 +7,20 @@ The [Promote APIM APIs workflow](../.github/workflows/promote.yml) runs the exis
 Node.js 22. It is **manual**, defaults to **dry-run**, and does not run `azd up`,
 deploy backend code or provision infrastructure.
 
+The action installs the tested global CLI before Azure login:
+
+```bash
+npm install -g @azure-tools/apiops-cli@1.0.5
+apiops --version
+```
+
+The promotion step sets `APIOPS_USE_GLOBAL=true`, so extraction, publisher dry-run
+and publication invoke the `apiops` executable. Node.js 22 is configured before
+installation. `npm ci` is still required for the MCP verification clients and
+regression tests. Local Bash runs default to the project-installed CLI unless
+`APIOPS_USE_GLOBAL=true` is explicitly set; a missing global executable fails
+rather than silently falling back to another installation.
+
 ## What each mode does
 
 | Mode | GitHub environment | Behavior |
@@ -135,6 +149,19 @@ Under each environment's **Environment variables**, create:
 Use the same resource group and APIM names in both environments. Client IDs may
 differ if you use separate identities. Repository-level Actions variables can
 hold shared values; environment variables take precedence.
+
+The workflow also exposes these deployment-context variables when configured.
+They do not provision resources or replace the promotion script's live gateway
+discovery:
+
+| Variable | Value |
+| --- | --- |
+| `AZURE_ENV_NAME` | Existing azd environment name, such as `apiops`. |
+| `AZURE_LOCATION` | Deployed Azure region, such as `brazilsouth`. |
+| `AZURE_WEBAPP_NAME` | Existing shared MCP App Service name. |
+| `BACKEND_URL` | Existing shared backend HTTPS base URL. |
+| `SOURCE_GATEWAY_URL` | Source APIM HTTPS gateway base URL. |
+| `TARGET_GATEWAY_URL` | Target APIM HTTPS gateway base URL. |
 
 These are identifiers, not passwords. No `AZURE_CLIENT_SECRET`, backend credential
 or APIM subscription key should be stored for this workflow. It fetches the two

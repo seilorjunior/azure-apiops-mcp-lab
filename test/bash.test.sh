@@ -129,7 +129,13 @@ npm() {
 curl() {
     printf '{"status":"ok"}\n'
 }
-export -f az node npm curl
+apiops() {
+    printf 'global-cli\n' >> "$MOCK_LOG"
+    node "$ROOT/node_modules/@azure-tools/apiops-cli/dist/cli/index.js" "$@"
+}
+export -f az node npm curl apiops
+export ROOT
+export APIOPS_USE_GLOBAL=false
 
 promote=(bash "$ROOT/scripts/bash/promote.sh" --resource-group test-rg --source-apim-name src --target-apim-name dst)
 export AZURE_API_VERSION='previous-version' POC_APIM_KEY='previous-key'
@@ -162,6 +168,26 @@ for scenario in MOCK_WRONG_BINDING MOCK_BAD_METADATA MOCK_FAIL_PUBLISH MOCK_BAD_
     esac
     export "$scenario=0"
 done
+
+: > "$MOCK_LOG"
+APIOPS_USE_GLOBAL=true "${promote[@]}"
+[[ "$(grep -c '^global-cli$' "$MOCK_LOG")" == 2 ]] || fail_test 'Global CLI must extract and preview.'
+! grep -qx 'publish|dst|false' "$MOCK_LOG" || fail_test 'Global default run applied changes.'
+: > "$MOCK_LOG"
+APIOPS_USE_GLOBAL=true "${promote[@]}" --apply
+[[ "$(grep -c '^global-cli$' "$MOCK_LOG")" == 3 ]] || fail_test 'Global CLI must extract, preview and publish.'
+grep -qx 'publish|dst|true' "$MOCK_LOG" || fail_test 'Global apply must preview.'
+grep -qx 'publish|dst|false' "$MOCK_LOG" || fail_test 'Global apply must publish.'
+grep -qx 'mcp|https://dst.example.test|target|dst-key' "$MOCK_LOG" || fail_test 'Global target verification missing.'
+if APIOPS_USE_GLOBAL=true MOCK_FAIL_PUBLISH=1 "${promote[@]}" --apply > "$MOCK_DIR/failure.log" 2>&1; then
+    fail_test 'Global CLI publication failure must propagate.'
+fi
+grep -q 'exit 9' "$MOCK_DIR/failure.log"
+if APIOPS_USE_GLOBAL=invalid "${promote[@]}" > "$MOCK_DIR/failure.log" 2>&1; then
+    fail_test 'Invalid CLI selection must fail.'
+fi
+grep -q 'APIOPS_USE_GLOBAL must be true or false' "$MOCK_DIR/failure.log"
+
 if bash "$ROOT/scripts/bash/promote.sh" --resource-group test-rg --source-apim-name src --target-apim-name src \
     > "$MOCK_DIR/failure.log" 2>&1; then
     fail_test 'Identical instances must fail.'

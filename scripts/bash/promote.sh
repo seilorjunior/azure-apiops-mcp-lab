@@ -26,6 +26,18 @@ while (( $# )); do
 done
 [[ -n "$resource_group" && -n "$source_apim" && -n "$target_apim" ]] ||
     fail 'Resource group, source APIM name and target APIM name are required.'
+case "${APIOPS_USE_GLOBAL:-false}" in
+    true)
+        command -v apiops > /dev/null || fail 'Install the global APIops CLI before promoting.'
+        cli=(apiops)
+        ;;
+    false)
+        cli_path="$ROOT/node_modules/@azure-tools/apiops-cli/dist/cli/index.js"
+        [[ -f "$cli_path" ]] || fail 'Run npm ci before promoting.'
+        cli=(node "$cli_path")
+        ;;
+    *) fail 'APIOPS_USE_GLOBAL must be true or false.' ;;
+esac
 assert_subscription
 [[ "$source_apim" != "$target_apim" ]] || fail 'Source and target APIM instances must be different.'
 service="$(service_url "$resource_group" "$source_apim")"
@@ -54,11 +66,9 @@ test_mcp_endpoints "$gateway" source "$key"
 before="$(source_snapshot)"
 run_id="$(node --input-type=module -e 'import { randomUUID } from "node:crypto"; console.log(randomUUID());')"
 folder="$ROOT/artifacts/run-$run_id"
-cli="$ROOT/node_modules/@azure-tools/apiops-cli/dist/cli/index.js"
-[[ -f "$cli" ]] || fail 'Run npm ci before promoting.'
 filter="$ROOT/config/source-filter.yaml"
 context=(--subscription-id "$SUBSCRIPTION_ID" --resource-group "$resource_group")
-node "$cli" extract "${context[@]}" --service-name "$source_apim" \
+"${cli[@]}" extract "${context[@]}" --service-name "$source_apim" \
     --output "$folder" --filter "$filter" --no-transitive
 node --input-type=module - "$folder" <<'NODE'
 import assert from 'node:assert/strict';
@@ -76,13 +86,13 @@ assert.equal(info('poc-proxy').properties?.mcpProperties?.transportType, 'stream
     'Extraction lost external MCP transport configuration.');
 NODE
 publish=(publish "${context[@]}" --service-name "$target_apim" --source "$folder" --filter "$filter" --no-transitive)
-node "$cli" "${publish[@]}" --dry-run
+"${cli[@]}" "${publish[@]}" --dry-run
 if [[ "$apply" == false ]]; then
     printf 'Dry-run complete. Artifacts: %s\n' "$folder"
     printf 'Review changes to %s, then re-run with --apply to publish and test.\n' "$target_apim"
     exit 0
 fi
-node "$cli" "${publish[@]}"
+"${cli[@]}" "${publish[@]}"
 for name in poc-rest poc-native poc-proxy; do
     target="$(az_json rest --url "$target_service/apis/$name?api-version=$API_VERSION")"
     if [[ "$name" == poc-native ]]; then
