@@ -320,6 +320,13 @@ Only APIs and their children are selected by
 Backends, secret named values and test subscriptions are pre-provisioned independently
 in **both** APIM instances. This PoC does not test exporting or promoting those dependencies.
 
+APIops treats an omitted filter resource family as **include all**, not exclude.
+The filter therefore explicitly sets every non-API family to `[]`, including
+named values, backends, products, subscriptions, gateways and service policies.
+`--no-transitive` prevents dependency expansion; it does not exclude those
+otherwise selected families. The artifact validator rejects any top-level entry
+other than `apis` before publisher dry-run or apply.
+
 Every invocation creates a fresh extraction, including when rerunning with `-Apply`
 (PowerShell) or `--apply` (Bash).
 The applied invocation performs its own dry-run first; it does not freeze the

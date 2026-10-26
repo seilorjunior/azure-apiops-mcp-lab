@@ -11,6 +11,7 @@ $global:ApiopsPromotionMock = @{
     PolicyReads = 0
     ProxyMetadata = 'canonical'
     BadProxy = 'none'
+    ExtraResource = $false
     ArmScope = '/subscriptions/00000000-0000-4000-8000-000000000001/resourceGroups/test-rg/providers/Microsoft.ApiManagement/service'
 }
 
@@ -90,6 +91,9 @@ function Invoke-MockApiops {
         Assert-Mock ($instance -eq 'src') 'Extraction must use source APIM.'
         $folder = $arguments[[array]::IndexOf($arguments, '--output') + 1]
         $global:ApiopsPromotionMock.Folders.Add($folder)
+        if ($global:ApiopsPromotionMock.ExtraResource) {
+            $null = New-Item -ItemType Directory -Path (Join-Path $folder 'namedValues\poc-backend-key') -Force
+        }
         foreach ($name in @('poc-rest', 'poc-native', 'poc-proxy')) {
             $directory = Join-Path $folder "apis\$name"
             $null = New-Item -ItemType Directory -Path $directory -Force
@@ -157,6 +161,19 @@ try {
         Assert-Mock (@($global:ApiopsPromotionMock.Calls | Where-Object kind -eq 'publish').Count -eq 0) 'Invalid proxy metadata must block publisher calls.'
     }
     $global:ApiopsPromotionMock.BadProxy = 'none'
+
+    $global:ApiopsPromotionMock.ExtraResource = $true
+    $global:ApiopsPromotionMock.Calls.Clear()
+    $rejected = $false
+    try {
+        & $promote -ResourceGroup test-rg -SourceApimName src -TargetApimName dst -Apply *> $null
+    } catch {
+        if ($_.Exception.Message -notmatch 'Extracted API configuration validation failed') { throw }
+        $rejected = $true
+    }
+    Assert-Mock $rejected 'Non-API artifacts must fail validation.'
+    Assert-Mock (@($global:ApiopsPromotionMock.Calls | Where-Object kind -eq 'publish').Count -eq 0) 'Non-API artifacts must block publisher calls.'
+    $global:ApiopsPromotionMock.ExtraResource = $false
 
     $global:ApiopsPromotionMock.ChangedPolicy = $true
     $global:ApiopsPromotionMock.PolicyReads = 0

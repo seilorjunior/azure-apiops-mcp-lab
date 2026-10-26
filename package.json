@@ -6,7 +6,7 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "start": "node src/server.mjs",
-    "test": "node --test test/server.test.mjs && node test/run-shell-tests.mjs",
+    "test": "node --test test/server.test.mjs test/filter.test.mjs && node test/run-shell-tests.mjs",
     "test:mcp": "node scripts/test-mcp.mjs"
   },
   "dependencies": {

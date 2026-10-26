@@ -5,6 +5,8 @@ import { isDeepStrictEqual } from 'node:util';
 
 const root = process.argv[2];
 const source = JSON.parse(readFileSync(0, 'utf8'));
+assert.deepEqual(readdirSync(root).sort(), ['apis'],
+  'Extraction contains resources outside the API-only promotion scope.');
 const apis = readdirSync(join(root, 'apis'), { withFileTypes: true })
   .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
 assert.deepEqual(apis, ['poc-native', 'poc-proxy', 'poc-rest'],

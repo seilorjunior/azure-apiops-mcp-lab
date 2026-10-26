@@ -167,6 +167,19 @@ automatically a failure.
 Do not compensate by creating the target APIs with Bicep or the portal: that bypasses
 the behavior the PoC is intended to test.
 
+## Publisher rejects a redacted named value
+
+If extraction includes `namedValues/poc-backend-key` and publication reports
+`*** REDACTED ***`, first check the extraction scope. An `apis` allowlist alone
+does not exclude named values or other resource families: omitted filter keys
+mean include all. `--no-transitive` only disables dependency expansion.
+
+Use the updated filter, which explicitly sets every non-API family to `[]`,
+and rerun to create a fresh extraction. The validator rejects non-API artifacts
+before publication. Do not substitute the actual secret, remove the redaction
+marker or disable APIops secret checks; the dependency already exists in each
+APIM instance and is outside this API-only promotion.
+
 ## Target native tool still references source APIM
 
 The expected operation ID must contain the **target** service scope and end with:

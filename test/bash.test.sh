@@ -8,6 +8,7 @@ export MOCK_SOURCE_COUNT="$MOCK_DIR/source-count"
 export MOCK_POLICY_COUNT="$MOCK_DIR/policy-count"
 export MOCK_WRONG_BINDING=0 MOCK_BAD_METADATA=0 MOCK_NPM_EXIT=0 MOCK_FAIL_PUBLISH=0 MOCK_BAD_PATH=0 MOCK_CHANGED_SOURCE=0 MOCK_CHANGED_POLICY=0
 export MOCK_PROXY_METADATA=canonical MOCK_BAD_PROXY=none
+export MOCK_EXTRA_RESOURCE=0
 touch "$MOCK_LOG" "$MOCK_FOLDERS"
 printf '0\n' > "$MOCK_SOURCE_COUNT"
 printf '0\n' > "$MOCK_POLICY_COUNT"
@@ -124,6 +125,9 @@ node() {
             command node --input-type=module - "$folder" <<'NODE'
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+if (process.env.MOCK_EXTRA_RESOURCE === '1') {
+    mkdirSync(join(process.argv[2], 'namedValues', 'poc-backend-key'), { recursive: true });
+}
 for (const name of ['poc-rest', 'poc-native', 'poc-proxy']) {
     const directory = join(process.argv[2], 'apis', name);
     mkdirSync(directory, { recursive: true });
@@ -206,6 +210,12 @@ for scenario in MOCK_WRONG_BINDING MOCK_BAD_METADATA MOCK_FAIL_PUBLISH MOCK_BAD_
 done
 
 MOCK_PROXY_METADATA=legacy "${promote[@]}"
+: > "$MOCK_LOG"
+if MOCK_EXTRA_RESOURCE=1 "${promote[@]}" --apply > "$MOCK_DIR/failure.log" 2>&1; then
+    fail_test 'Non-API artifacts must fail scope validation.'
+fi
+grep -q 'outside the API-only promotion scope' "$MOCK_DIR/failure.log"
+! grep -q '^publish|' "$MOCK_LOG" || fail_test 'Non-API artifacts must block all publisher calls.'
 for scenario in missing changed backend type; do
     : > "$MOCK_LOG"
     if MOCK_BAD_PROXY="$scenario" "${promote[@]}" --apply > "$MOCK_DIR/failure.log" 2>&1; then
