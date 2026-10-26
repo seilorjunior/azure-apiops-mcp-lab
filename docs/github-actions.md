@@ -116,6 +116,18 @@ the whole subscription:
 /subscriptions/SUBSCRIPTION_ID/resourceGroups/RESOURCE_GROUP/providers/Microsoft.ApiManagement/service/TARGET_APIM_NAME
 ```
 
+Also grant **Reader** at the containing resource-group scope. APIops 1.0.5
+performs a resource-group GET during publisher preflight, including dry-run;
+roles scoped only to child APIM resources do not authorize that parent read.
+No subscription-wide assignment is necessary.
+
+For this dedicated PoC, the operator instead explicitly authorized **Contributor**
+on `rg-apiops`. That role covers preflight and management of all resources in
+the group, including App Service, and permits writes and deletes. It is broader
+than the recommended Reader plus APIM-scoped roles and does not grant role-
+assignment permissions. The original two APIM assignments remain but are
+redundant under the resource-group Contributor assignment.
+
 This built-in role is intentionally broad within each service: it permits source
 writes as well as target writes and access to secrets. The script only reads the
 source and checks a limited source snapshot; that is not an RBAC write barrier
