@@ -24,6 +24,16 @@ with an Azure identity. Dependabot PRs are subject to the same review and CI.
 
 ## Changes and review
 
+The upstream repository requests Copilot reviews automatically for new PRs targeting
+any branch, including drafts. New pushes do not automatically trigger another
+review; request a fresh Copilot review manually when needed. Address relevant
+feedback and keep required CI checks passing. Copilot feedback does not count as
+the required human approval, and authors cannot approve their own PRs.
+
+Fork maintainers must configure their own repository protections and Copilot
+ruleset using the [setup checklist](docs/github-actions.md#repository-setup-checklist).
+These GitHub settings are not installed by copying repository files.
+
 - Keep changes focused and update directly related documentation and tests.
 - Preserve dry-run defaults, source/target isolation, explicit API-only filters,
   secret-redaction checks and source-preservation assertions.
