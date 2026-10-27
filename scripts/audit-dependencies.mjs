@@ -43,7 +43,10 @@ function findingsFrom(report, label) {
       }
     }
   }
-  assert(report.metadata.vulnerabilities.total === Object.keys(report.vulnerabilities).length,
+  const entries = Object.values(report.vulnerabilities);
+  assert(report.metadata.vulnerabilities.total === entries.length
+    && severities.every((severity) => report.metadata.vulnerabilities[severity]
+      === entries.filter((entry) => entry.severity === severity).length),
     `${label} audit vulnerability counts do not match its entries.`);
   assert(Object.keys(report.vulnerabilities).length === 0 || findings.size > 0,
     `${label} audit has vulnerabilities without advisory details.`);
