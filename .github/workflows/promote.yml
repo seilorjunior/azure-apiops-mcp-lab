@@ -109,8 +109,33 @@ jobs:
       AZURE_CORE_OUTPUT: none
 
     steps:
-      - name: Require the default branch and a supported mode
+      - name: Recheck the permitted user, default branch and mode
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROMOTION_ENABLED: ${{ vars.ENABLE_AZURE_PROMOTION }}
+          ALLOWED_PROMOTION_ACTOR_ID: ${{ vars.APIM_PROMOTION_ALLOWED_ACTOR_ID }}
+          PROMOTION_ACTOR_ID: ${{ github.actor_id }}
+          PROMOTION_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
         run: |
+          set -euo pipefail
+          # A failed-job re-run can reuse the earlier authorization job.
+          [[ "$PROMOTION_ENABLED" == true ]] || {
+            echo "::error::Azure promotion is disabled."
+            exit 1
+          }
+          [[ "$ALLOWED_PROMOTION_ACTOR_ID" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Configure APIM_PROMOTION_ALLOWED_ACTOR_ID with the permitted GitHub user's numeric ID."
+            exit 1
+          }
+          [[ "$PROMOTION_ACTOR_ID" == "$ALLOWED_PROMOTION_ACTOR_ID" ]] || {
+            echo "::error::Only the configured GitHub user may dispatch promotion."
+            exit 1
+          }
+          triggering_actor_id="$(gh api "users/$PROMOTION_TRIGGERING_ACTOR" --jq .id)"
+          [[ "$triggering_actor_id" == "$ALLOWED_PROMOTION_ACTOR_ID" ]] || {
+            echo "::error::Only the configured GitHub user may re-run promotion."
+            exit 1
+          }
           if [[ "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]]; then
             echo "::error::Promotion must run from the repository default branch."
             exit 1

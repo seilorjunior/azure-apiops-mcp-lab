@@ -38,8 +38,14 @@ test('Azure promotion is manual and waits for a no-OIDC policy job', () => {
   assert.equal(Object.hasOwn(workflow.on, 'pull_request_target'), false);
 });
 
-test('promotion authorizes only the configured dispatcher and re-run user', () => {
-  const gate = readWorkflow('promote').jobs.authorize.steps[0].run;
+test('both promotion jobs authorize only the configured dispatcher and re-run user', () => {
+  const workflow = readWorkflow('promote');
+  const gate = workflow.jobs.authorize.steps[0].run;
+  const recheck = workflow.jobs.promote.steps[0];
+  assert.equal(recheck.env.PROMOTION_ENABLED, '${{ vars.ENABLE_AZURE_PROMOTION }}');
+  assert.equal(recheck.env.ALLOWED_PROMOTION_ACTOR_ID, '${{ vars.APIM_PROMOTION_ALLOWED_ACTOR_ID }}');
+  assert.equal(recheck.env.PROMOTION_ACTOR_ID, '${{ github.actor_id }}');
+  assert.equal(recheck.env.PROMOTION_TRIGGERING_ACTOR, '${{ github.triggering_actor }}');
   const environmentGate = gate.indexOf('for environment in ');
   assert.ok(environmentGate > 0);
   const actorGate = gate.slice(0, environmentGate);
@@ -57,34 +63,36 @@ test('promotion authorizes only the configured dispatcher and re-run user', () =
     { name: 'non-default branch', overrides: { GITHUB_REF: 'refs/heads/other' }, status: 1, error: /default branch/ },
     { name: 'invalid mode', overrides: { PROMOTION_MODE: 'other' }, status: 1, error: /Unsupported/ },
   ];
-  for (const scenario of cases) {
-    const result = spawnSync(bash, ['--noprofile', '--norc', '-c', `
-      gh() {
-        [[ "$1" == api && "$2" == users/example-owner && "$3" == --jq && "$4" == .id ]] || return 99
-        [[ "$MOCK_LOOKUP_FAILURE" != true ]] || return 7
-        printf '%s\\n' "$MOCK_TRIGGERING_ID"
-      }
-      ${scenario.status === 0 ? actorGate : gate}
-    `], {
-      encoding: 'utf8',
-      timeout: 10_000,
-      env: {
-        ...process.env,
-        PROMOTION_ENABLED: 'true',
-        ALLOWED_PROMOTION_ACTOR_ID: '101',
-        PROMOTION_ACTOR_ID: '101',
-        PROMOTION_TRIGGERING_ACTOR: 'example-owner',
-        MOCK_TRIGGERING_ID: '101',
-        MOCK_LOOKUP_FAILURE: 'false',
-        DEFAULT_BRANCH: 'main',
-        GITHUB_REF: 'refs/heads/main',
-        PROMOTION_MODE: 'dry-run',
-        ...scenario.overrides,
-      },
-    });
-    if (result.error) throw result.error;
-    assert.equal(result.status, scenario.status, `${scenario.name}: ${result.stdout}${result.stderr}`);
-    if (scenario.error) assert.match(result.stdout, scenario.error, scenario.name);
+  for (const script of [gate, recheck.run]) {
+    for (const scenario of cases) {
+      const result = spawnSync(bash, ['--noprofile', '--norc', '-c', `
+        gh() {
+          [[ "$1" == api && "$2" == users/example-owner && "$3" == --jq && "$4" == .id ]] || return 99
+          [[ "$MOCK_LOOKUP_FAILURE" != true ]] || return 7
+          printf '%s\\n' "$MOCK_TRIGGERING_ID"
+        }
+        ${script === gate && scenario.status === 0 ? actorGate : script}
+      `], {
+        encoding: 'utf8',
+        timeout: 10_000,
+        env: {
+          ...process.env,
+          PROMOTION_ENABLED: 'true',
+          ALLOWED_PROMOTION_ACTOR_ID: '101',
+          PROMOTION_ACTOR_ID: '101',
+          PROMOTION_TRIGGERING_ACTOR: 'example-owner',
+          MOCK_TRIGGERING_ID: '101',
+          MOCK_LOOKUP_FAILURE: 'false',
+          DEFAULT_BRANCH: 'main',
+          GITHUB_REF: 'refs/heads/main',
+          PROMOTION_MODE: 'dry-run',
+          ...scenario.overrides,
+        },
+      });
+      if (result.error) throw result.error;
+      assert.equal(result.status, scenario.status, `${scenario.name}: ${result.stdout}${result.stderr}`);
+      if (scenario.error) assert.match(result.stdout, scenario.error, scenario.name);
+    }
   }
 });
 
