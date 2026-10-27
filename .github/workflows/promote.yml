@@ -31,6 +31,9 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       PROMOTION_ENABLED: ${{ vars.ENABLE_AZURE_PROMOTION }}
+      ALLOWED_PROMOTION_ACTOR_ID: ${{ vars.APIM_PROMOTION_ALLOWED_ACTOR_ID }}
+      PROMOTION_ACTOR_ID: ${{ github.actor_id }}
+      PROMOTION_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
       PROMOTION_MODE: ${{ inputs.mode }}
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
     steps:
@@ -39,6 +42,19 @@ jobs:
           set -euo pipefail
           [[ "$PROMOTION_ENABLED" == true ]] || {
             echo "::error::Azure promotion is disabled. Configure protections, review dependency risks, then set ENABLE_AZURE_PROMOTION=true."
+            exit 1
+          }
+          [[ "$ALLOWED_PROMOTION_ACTOR_ID" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Configure APIM_PROMOTION_ALLOWED_ACTOR_ID with the permitted GitHub user's numeric ID."
+            exit 1
+          }
+          [[ "$PROMOTION_ACTOR_ID" == "$ALLOWED_PROMOTION_ACTOR_ID" ]] || {
+            echo "::error::Only the configured GitHub user may dispatch promotion."
+            exit 1
+          }
+          triggering_actor_id="$(gh api "users/$PROMOTION_TRIGGERING_ACTOR" --jq .id)"
+          [[ "$triggering_actor_id" == "$ALLOWED_PROMOTION_ACTOR_ID" ]] || {
+            echo "::error::Only the configured GitHub user may re-run promotion."
             exit 1
           }
           [[ "$GITHUB_REF" == "refs/heads/$DEFAULT_BRANCH" ]] || {
@@ -52,11 +68,13 @@ jobs:
           for environment in apim-preview apim-promotion; do
             config="$(gh api "repos/$GITHUB_REPOSITORY/environments/$environment")"
             jq -e '.deployment_branch_policy.custom_branch_policies == true' <<< "$config" > /dev/null
+            jq -e '.can_admins_bypass == false' <<< "$config" > /dev/null
             branches="$(gh api "repos/$GITHUB_REPOSITORY/environments/$environment/deployment-branch-policies")"
             jq -e --arg branch "$DEFAULT_BRANCH" \
               '.branch_policies | length == 1 and .[0].name == $branch and .[0].type == "branch"' \
               <<< "$branches" > /dev/null
-            jq -e '.protection_rules | any(.type == "required_reviewers" and .prevent_self_review == true and (.reviewers | length > 0))' \
+            jq -e --arg actor "$ALLOWED_PROMOTION_ACTOR_ID" \
+              '.protection_rules | any(.type == "required_reviewers" and .prevent_self_review == false and (.reviewers | length == 1) and .reviewers[0].type == "User" and (.reviewers[0].reviewer.id | tostring) == $actor)' \
               <<< "$config" > /dev/null
           done
 

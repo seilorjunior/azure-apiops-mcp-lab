@@ -59,10 +59,9 @@ Azure CLI account; no personal subscription ID is embedded in the scripts.
 In **Settings > Environments**, create these environments before running:
 
 1. **`apim-preview`**: use a custom deployment-branch policy allowing only the exact
-   default branch (branch type, no tag policy), enable required reviewers and
-   prevent self-review.
-2. **`apim-promotion`**: apply the same branch and reviewer rules. Disable
-   administrator bypass where your policy allows.
+   default branch (branch type, no tag policy). Set the permitted user as the
+   only required reviewer, allow self-review and disable administrator bypass.
+2. **`apim-promotion`**: apply the same branch and reviewer rules.
 
 Required reviewers and some protection rules depend on repository visibility and
 GitHub plan. Verify availability before enabling apply. **Naming an environment
@@ -75,13 +74,27 @@ configuration validation and `npm test` run before Azure login.
 
 Azure execution is disabled by default. After reviewing
 [dependency risks](dependency-risks.md), configure both environments, then set
-the repository variable `ENABLE_AZURE_PROMOTION=true`. A separate job without
-OIDC permissions checks that opt-in, the default branch and both environments'
-exact branch restrictions, reviewers and self-review prevention before the
-Azure-connected job can start. Missing or unsupported protections fail closed.
-Forks must opt in separately; do not enable promotion on untrusted PR events.
-If you are the only reviewer, another authorized user must dispatch the run,
-or self-review prevention will correctly block approval.
+the repository variable `APIM_PROMOTION_ALLOWED_ACTOR_ID` to your GitHub user's
+numeric ID, then set `ENABLE_AZURE_PROMOTION=true`. Find that ID with:
+
+```bash
+gh api users/YOUR_GITHUB_LOGIN --jq .id
+```
+
+A separate job without OIDC permissions checks the original dispatcher's numeric
+ID and resolves the user starting each re-run to the same numeric ID. Other users
+fail before environment access or Azure authentication. The gate also verifies
+the default branch, both environments' exact branch restrictions, the single
+permitted reviewer, self-review enabled and administrator bypass disabled.
+Missing or unsupported protections fail closed. Both preview and apply still
+require manual approval by the permitted user, including their own runs.
+
+This is an explicitly single-user lab policy, not two-person approval. Anyone
+with repository administration or workflow-editing privileges could change the
+allowlist or workflow; this is not a boundary against a malicious administrator.
+GitHub may still show the workflow controls to other users with write access,
+but their runs are rejected by the authorization job. Forks must configure their
+own user ID and opt in separately; do not enable promotion on untrusted PR events.
 
 ## 3. Configure Azure OIDC trust and authorization
 
@@ -190,6 +203,8 @@ These are identifiers, not passwords. No `AZURE_CLIENT_SECRET`, backend credenti
 or APIM subscription key should be stored for this workflow. It fetches the two
 test keys at runtime using the authenticated management identity. Do not copy or
 upload the local azd environment file. Keep shell tracing and CLI debug logging off.
+`APIM_PROMOTION_ALLOWED_ACTOR_ID` restricts dispatch and re-runs to one numeric
+GitHub user ID; configure that same user as the only reviewer on both environments.
 `ENABLE_AZURE_PROMOTION` is a separate repository-level opt-in variable, not an
 Azure credential; leave it unset or `false` until all setup and risk review is done.
 
