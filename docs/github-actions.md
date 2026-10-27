@@ -74,11 +74,43 @@ OIDC trust apply to the copy.
 In **Settings > Rules > Rulesets**, or the branch-protection settings, protect
 your default branch with:
 
-- One required human approving review, dismissal of stale approvals and required
-  conversation resolution.
+- Required conversation resolution. Configure approval in the separate review
+  ruleset below so its owner bypass does not bypass CI or conversation resolution.
 - Strict required checks named `Test (ubuntu-24.04)`, `Test (windows-2025)` and
   `Validate infrastructure`. Run CI first so GitHub can discover these names.
 - Administrator enforcement, with force pushes and branch deletion disabled.
+
+For the upstream repository's solo-maintainer policy, keep the legacy branch
+protection's required approving-review count at zero, then create a separate
+**Owner review** branch ruleset:
+
+| Setting | Value |
+| --- | --- |
+| Enforcement | Active |
+| Target branches | Default branch |
+| Bypass actor | Repository owner, only for pull requests |
+| Require a pull request before merging | Enabled |
+| Required approvals | One |
+| Require review from Code Owners | Enabled |
+| Dismiss stale approvals on new commits | Enabled |
+
+The [CODEOWNERS file](../.github/CODEOWNERS) contains `* @seilorjunior`, covering
+all files, including CODEOWNERS itself. Fork maintainers must replace that login
+with their own eligible code owner and configure the bypass actor in GitHub.
+CODEOWNERS must be present on the PR's base branch for GitHub to apply it.
+This setup protects PRs targeting the default branch; other base branches need
+their own protection and CODEOWNERS.
+
+The owner reviews other authors' PRs and submits an approving review. For their
+own PRs, the owner reviews the changes and manually merges using the review-only
+bypass after CI passes. GitHub does not allow self-approval.
+The bypass is **not conditional on authorship**: the owner can also bypass review
+on others' PRs. This is a trusted-maintainer policy, not strict enforcement of an
+author-dependent rule. Keep automatic merging disabled.
+
+Keep required CI checks, administrator enforcement and conversation resolution
+outside the bypassable review ruleset. Its bypass does not override those
+independent protections or the Copilot ruleset.
 
 Automatic Copilot review is a separate native branch ruleset. To match the upstream
 repository, create it in **Settings > Rules > Rulesets** with:
@@ -100,7 +132,8 @@ see [GitHub's configuration guide](https://docs.github.com/en/copilot/how-tos/co
 
 Copilot feedback does not count as the required human approval. A PR author cannot
 approve their own PR to satisfy that requirement. The single-user environment
-approval policy below controls Azure jobs separately; it does not waive PR review.
+approval policy below controls Azure jobs separately; it is unrelated to the
+review-only owner bypass above.
 Do not add an Azure-connected or privileged PR workflow to request reviews.
 
 ## 1. Deploy and verify the lab first

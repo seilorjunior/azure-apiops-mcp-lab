@@ -27,8 +27,14 @@ with an Azure identity. Dependabot PRs are subject to the same review and CI.
 The upstream repository requests Copilot reviews automatically for new PRs targeting
 any branch, including drafts. New pushes do not automatically trigger another
 review; request a fresh Copilot review manually when needed. Address relevant
-feedback and keep required CI checks passing. Copilot feedback does not count as
-the required human approval, and authors cannot approve their own PRs.
+feedback and keep required CI checks passing. The
+[CODEOWNERS file](.github/CODEOWNERS) assigns every file to `@seilorjunior`.
+PRs into `main` require code-owner approval unless the owner explicitly uses the
+PR-only review bypass. The owner uses this bypass for their own PRs because GitHub
+does not allow self-approval. It can also bypass approval for other authors' PRs;
+the agreed policy is to review and approve those PRs normally.
+Required CI and conversation resolution still apply. Automatic merging is disabled.
+Copilot feedback does not count as a code-owner approval.
 
 Fork maintainers must configure their own repository protections and Copilot
 ruleset using the [setup checklist](docs/github-actions.md#repository-setup-checklist).

@@ -141,11 +141,15 @@ on Linux/macOS. azd also selects platform-specific hooks automatically.
 
 The upstream repository automatically requests Copilot reviews for new pull
 requests targeting any branch, including drafts. New pushes do not automatically
-request another review. Copilot feedback does not satisfy the required human
-approval or replace CI.
+request another review. For PRs into `main`, the
+[CODEOWNERS file](.github/CODEOWNERS) assigns every file to `@seilorjunior`.
+A separate review ruleset requires a code-owner approval, with a PR-only owner
+bypass for solo-maintainer merges. This bypass also applies to other authors' PRs;
+it is not an author-based exemption. The owner reviews and merges PRs manually.
+Copilot feedback does not count as approval or replace required CI.
 
-Fork maintainers must configure their own Copilot ruleset; copying the workflow
-files does not enable automatic reviews. See
+Fork maintainers must replace the CODEOWNERS login and configure their own review
+and Copilot rulesets; copying repository files does not install these settings. See
 [review setup](docs/github-actions.md#configure-pull-request-protection-and-copilot)
 and the [contribution guide](CONTRIBUTING.md#changes-and-review).
 
