@@ -88,6 +88,8 @@ the default branch, both environments' exact branch restrictions, the single
 permitted reviewer, self-review enabled and administrator bypass disabled.
 Missing or unsupported protections fail closed. Both preview and apply still
 require manual approval by the permitted user, including their own runs.
+The Azure-connected job repeats the identity check before any checkout or Azure
+login: a failed-job-only re-run can otherwise reuse an earlier authorization result.
 
 This is an explicitly single-user lab policy, not two-person approval. Anyone
 with repository administration or workflow-editing privileges could change the
