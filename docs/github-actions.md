@@ -230,6 +230,15 @@ to the workflow guard. Keep immutable subjects enabled; update Entra trusts to
 match rather than weakening GitHub's subject configuration.
 See [Microsoft's OIDC setup guide](https://learn.microsoft.com/azure/developer/github/connect-from-azure-openid-connect).
 
+If you rename or transfer your repository, pause promotion before the change.
+Read its OIDC subject configuration again afterward: an immutable subject can
+contain both repository names and IDs, so stable numeric IDs alone do not keep
+the old subject valid. Update both existing Entra federated credentials to the
+new exact environment subjects while preserving their issuer and audience.
+Verify both trusts, repository protections and environment policies before
+restoring the promotion opt-in. Update the clone's Git remote and repository
+links too; a GitHub URL redirect does not repair Azure federation.
+
 For a straightforward **dedicated-lab** setup, assign **API Management Service
 Contributor** to the identity at each of the two APIM **resource scopes**, not
 the whole subscription:

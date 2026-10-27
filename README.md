@@ -1,6 +1,6 @@
-# APIops + Azure API Management MCP lab
+# Azure APIops MCP Lab
 
-[![CI](https://github.com/seilorjunior/poc-apiops/actions/workflows/ci.yml/badge.svg)](https://github.com/seilorjunior/poc-apiops/actions/workflows/ci.yml)
+[![CI](https://github.com/seilorjunior/azure-apiops-mcp-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/seilorjunior/azure-apiops-mcp-lab/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **Independent community example.** This is not an official Microsoft product,
