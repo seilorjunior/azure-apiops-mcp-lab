@@ -44,8 +44,11 @@ These GitHub settings are not installed by copying repository files.
 - Preserve dry-run defaults, source/target isolation, explicit API-only filters,
   secret-redaction checks and source-preservation assertions.
 - Keep PowerShell and Bash behavior aligned; use LF for shell scripts.
-- Do not commit `.env` files, azd state, APIM artifacts, backend credentials,
+- Do not commit `.env` files, azd state, raw APIM artifacts, backend credentials,
   subscription keys, access tokens or generated deployment archives.
+- [Hash-only API snapshots](docs/api-snapshots.md) may be committed after reviewing
+  their API IDs and resource-file names. They must not contain exported values
+  or policy text. Review the actual configuration privately before accepting hashes.
 - Use fictional Azure IDs in fixtures. Public client/subscription identifiers
   are not passwords, but there is no reason to embed a contributor's real IDs.
 - Do not force dependency overrides or SDK/Express downgrades to hide audit
