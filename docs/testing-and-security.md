@@ -40,6 +40,7 @@ npm test
 | [preflight.test.mjs](../test/preflight.test.mjs) | Read-only source/target dependency checks, hosting/credential drift rejection and bounded readiness retries. |
 | [mcp-client.test.mjs](../test/mcp-client.test.mjs) | Per-phase errors, notification/tool-call deadlines, no tool replay and no raw credential/response leakage. |
 | [report.test.mjs](../test/report.test.mjs) | Allowlisted summary fields, privacy, CLI/API counts and failed/incomplete/skipped outcomes. |
+| [api-snapshot.test.mjs](../test/api-snapshot.test.mjs) | Hash-only snapshots, explicit API filters, subset matching, drift rejection and mocked capture/preview/apply with target native binding checks. |
 | [promotion.test.ps1](../test/promotion.test.ps1) | Source-only extraction, target-only publication, preview before apply, separate gateway/key selection, no deletion/affix flags, target binding guard, identical-instance rejection and environment restoration. |
 | [preprovision.test.ps1](../test/preprovision.test.ps1) | Missing optional process key is allowed, environment-provided key is allowed, wrong subscription blocks npm, failing npm blocks provisioning, working directory restored. |
 | [bash.test.sh](../test/bash.test.sh) | Bash equivalents: dry-run/apply routing, credentials, metadata/path/binding guards, CLI failure propagation, preprovision validation and source verification. |

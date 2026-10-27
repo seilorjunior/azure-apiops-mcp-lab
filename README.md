@@ -39,6 +39,7 @@ See the [audit policy and exception process](docs/dependency-risks.md#automated-
 | [Architecture and component diagrams](.github/modernize/assessment/engines/facts/architecture-diagram.md) | Azure topology, MCP request flows, module relationships and design decisions. |
 | [Deployment and operations](docs/operations.md) | Prerequisites, azd setup, credentials, deployment, APIops promotion, configuration and cleanup. |
 | [GitHub Actions promotion](docs/github-actions.md) | Manual dry-run/apply workflow, Azure OIDC, environment approvals and configuration variables. |
+| [Git-versioned API snapshots](docs/api-snapshots.md) | Hash-only configuration snapshots and explicit API-subset publication from local PowerShell or Bash. |
 | [Testing and security](docs/testing-and-security.md) | What each test proves, live acceptance checklist, trust boundaries and production gaps. |
 | [Troubleshooting](docs/troubleshooting.md) | Parameter/hook failures, authentication errors, tool binding failures and partial deployments. |
 | [Validation scope](docs/validation.md) | What offline and live checks prove, and remaining gates. |
