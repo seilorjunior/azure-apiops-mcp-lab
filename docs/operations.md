@@ -71,15 +71,13 @@ production/shared services. Two APIM instances cost more than the previous singl
   `jq` installation is required for the Bash path.
 - Azure login with permission to create a dedicated resource group, APIM and App
   Service, run subscription-scope deployments, read APIM subscription secrets, and manage APIs.
-- Approved subscription: `seilorjunior-all`
-  (`00000000-0000-4000-8000-000000000001`).
-- Review [the deployment plan](../.azure/deployment-plan.md) before deploying.
+- Your own Azure subscription and publisher contact email.
+- Review [validation scope](validation.md) and [dependency risks](dependency-risks.md).
 
-The subscription ID is currently fixed in [Common.ps1](../scripts/ps1/Common.ps1)
-and [common.sh](../scripts/bash/common.sh).
-Both the Azure CLI account and azd environment must match it. To adapt this PoC to
-another subscription, review that guard and its corresponding tests together;
-changing only the azd environment variable is intentionally insufficient.
+Both shell helpers read `AZURE_SUBSCRIPTION_ID` from the process environment and
+require a subscription UUID matching the active Azure CLI account. azd supplies
+that variable to hooks. For direct script calls, load that single value from the
+selected azd environment; do not print or source the complete environment file.
 
 ```powershell
 npm ci
@@ -99,17 +97,11 @@ Do not treat local tests or Bicep compilation as approval to expose this PoC:
 
 - Quota/capacity checks are incomplete because the local quota CLI extension is
   unavailable. Region listings do not guarantee SKU capacity.
-- The npm audit reports five runtime findings (two moderate, three high) and ten
-  findings including development dependencies (two moderate, six high, two critical).
-  These include runtime dependency paths
-  (`body-parser`, `fast-uri`) and development-only APIops paths (`simple-git`,
-  `@simple-git/argv-parser`, `@azure/msal-node`). Compatible patch versions suggested
-  by the audit were not available in the registry when checked. No forced major
-  overrides or SDK downgrades are applied. Re-run `npm audit` and review remediation
-  before deployment. Rejecting compressed backend requests reduces one input
-  surface but does **not** resolve or clear the audit findings.
-- Live ARM validation, gateway propagation and both APIM MCP modes remain untested
-  until a separately approved deployment.
+- Known runtime and CLI advisory findings remain; see the current
+  [dependency risk register](dependency-risks.md). No forced major overrides or
+  SDK downgrades are applied. Re-run both audits before deployment.
+- Live ARM validation, gateway propagation and both APIM MCP modes must be checked
+  in your own subscription after an explicitly authorized deployment.
 
 Local validation passed: seven backend tests, offline PowerShell promotion tests,
 clean lockfile installation, Node syntax checks, PowerShell parsing, Bicep compilation
@@ -119,8 +111,7 @@ and server source (no environment state or secrets). The offline promotion tests
 they verify source/target routing, distinct keys, dry-run/apply behavior, incorrect
 ARM binding rejection and environment restoration. Compiled-template checks confirm
 two Developer-tier instances and source-only API seeding.
-The Azure promotion scripts have not been exercised against live Azure; they must
-pass the live acceptance tests before the PoC can be declared successful.
+Successful sample runs do not replace your own live acceptance checks.
 
 ## Deploy with azd (only after explicit approval)
 
@@ -132,10 +123,13 @@ deploys the MCP backend. APIops promotion remains a separate, deliberate step.
 npm ci
 azd auth login
 az login
-az account set --subscription 00000000-0000-4000-8000-000000000001
+# Replace this fictional UUID with your intended subscription.
+$env:AZURE_SUBSCRIPTION_ID = '00000000-0000-4000-8000-000000000001'
+az account set --subscription $env:AZURE_SUBSCRIPTION_ID
 azd env new apiops-mcp-poc --no-prompt
-azd env set AZURE_SUBSCRIPTION_ID 00000000-0000-4000-8000-000000000001
+azd env set AZURE_SUBSCRIPTION_ID $env:AZURE_SUBSCRIPTION_ID
 azd env set AZURE_LOCATION eastus2
+azd env set APIM_PUBLISHER_EMAIL 'you@example.com'
 # azd will prompt for backendKey if no value has been supplied.
 # Enter a strong credential of at least 32 characters and retain it securely.
 azd provision --preview
@@ -143,7 +137,11 @@ azd provision --preview
 azd up
 ```
 
-The same azd setup commands work in Bash. For local Bicep compilation, use
+In Bash, use `export AZURE_SUBSCRIPTION_ID='<your-subscription-uuid>'` and
+`az account set --subscription "$AZURE_SUBSCRIPTION_ID"`, then the same azd
+commands with `azd env set AZURE_SUBSCRIPTION_ID "$AZURE_SUBSCRIPTION_ID"`.
+Supply your own publisher email, not the documentation example.
+For local Bicep compilation, use
 `az bicep build --file infra/main.bicep --stdout` instead of a PowerShell-style path.
 azd selects PowerShell hooks on Windows and Bash hooks on Linux/macOS; no manifest
 edits are needed when switching platforms.
@@ -188,7 +186,7 @@ App Service `azd-service-name` tag and the `AZURE_WEBAPP_NAME` output. Packaging
 can overlap provisioning; a displayed `Skipped` service after a hook failure is not
 evidence that the application was deployed or that all infrastructure was rolled back.
 
-The preprovision hook verifies the approved subscription and runs local tests.
+The preprovision hook verifies the configured subscription and runs local tests.
 azd resolves infrastructure parameters, and Bicep enforces the secure `backendKey`
 minimum length of 32 characters. The hook does not require a process variable when
 the credential was supplied through azd's secured parameter prompt.
@@ -245,6 +243,7 @@ script and does not replace azd for infrastructure or backend deployment.
 The postdeploy hook prints the promotion command. Alternatively, read azd outputs:
 
 ```powershell
+$env:AZURE_SUBSCRIPTION_ID = azd env get-value AZURE_SUBSCRIPTION_ID
 $resourceGroup = azd env get-value AZURE_RESOURCE_GROUP
 $sourceApim = azd env get-value SOURCE_APIM_NAME
 $targetApim = azd env get-value TARGET_APIM_NAME
@@ -256,6 +255,7 @@ $targetApim = azd env get-value TARGET_APIM_NAME
 Bash equivalent:
 
 ```bash
+export AZURE_SUBSCRIPTION_ID="$(azd env get-value AZURE_SUBSCRIPTION_ID)"
 resource_group="$(azd env get-value AZURE_RESOURCE_GROUP)"
 source_apim="$(azd env get-value SOURCE_APIM_NAME)"
 target_apim="$(azd env get-value TARGET_APIM_NAME)"
@@ -376,8 +376,9 @@ set the `Ocp-Apim-Subscription-Key` header using a secret input rather than a li
 | Name | Source | Meaning |
 | --- | --- | --- |
 | `AZURE_ENV_NAME` | azd environment | Forms resource group name `rg-<environment-name>`. |
-| `AZURE_SUBSCRIPTION_ID` | azd environment | Must match repository guard and Azure CLI account. |
+| `AZURE_SUBSCRIPTION_ID` | azd/process environment | Required UUID; must match the active Azure CLI account. |
 | `AZURE_LOCATION` | azd environment or parameter resolution | Location for the resource group and resources. |
+| `APIM_PUBLISHER_EMAIL` | azd environment | Required publisher contact; no personal default is embedded. |
 | `POC_BACKEND_KEY` | Optional process environment | Alternative to the azd secure prompt; at least 32 characters. |
 | `backendKey` | Secure infrastructure parameter | Shared backend credential provisioned into App Service and both APIM named values. |
 | `POC_APIM_KEY` | Process environment for manual smoke tests | Subscription key for the gateway being tested, not the backend credential. |
@@ -392,8 +393,8 @@ set the `Ocp-Apim-Subscription-Key` header using a secret input rather than a li
 | `BACKEND_URL` | Backend health check. |
 
 There are no secret outputs. Use individual `azd env get-value <name>` commands
-instead of printing the complete environment. The publisher email defaults to the
-value in [main.bicep](../infra/main.bicep); review it before reusing the project.
+instead of printing the complete environment. Provide your own publisher contact
+through `APIM_PUBLISHER_EMAIL`; it maps to the required `publisherEmail` parameter.
 
 ## Cleanup and cost control
 

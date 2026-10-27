@@ -21,8 +21,48 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  authorize:
+    name: Verify promotion safety gates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PROMOTION_ENABLED: ${{ vars.ENABLE_AZURE_PROMOTION }}
+      PROMOTION_MODE: ${{ inputs.mode }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - name: Require explicit opt-in and protected environments
+        run: |
+          set -euo pipefail
+          [[ "$PROMOTION_ENABLED" == true ]] || {
+            echo "::error::Azure promotion is disabled. Configure protections, review dependency risks, then set ENABLE_AZURE_PROMOTION=true."
+            exit 1
+          }
+          [[ "$GITHUB_REF" == "refs/heads/$DEFAULT_BRANCH" ]] || {
+            echo "::error::Promotion must run from the default branch."
+            exit 1
+          }
+          case "$PROMOTION_MODE" in
+            dry-run|apply) ;;
+            *) echo "::error::Unsupported promotion mode."; exit 1 ;;
+          esac
+          for environment in apim-preview apim-promotion; do
+            config="$(gh api "repos/$GITHUB_REPOSITORY/environments/$environment")"
+            jq -e '.deployment_branch_policy.custom_branch_policies == true' <<< "$config" > /dev/null
+            branches="$(gh api "repos/$GITHUB_REPOSITORY/environments/$environment/deployment-branch-policies")"
+            jq -e --arg branch "$DEFAULT_BRANCH" \
+              '.branch_policies | length == 1 and .[0].name == $branch and .[0].type == "branch"' \
+              <<< "$branches" > /dev/null
+            jq -e '.protection_rules | any(.type == "required_reviewers" and .prevent_self_review == true and (.reviewers | length > 0))' \
+              <<< "$config" > /dev/null
+          done
+
   promote:
     name: ${{ inputs.mode }} APIM promotion
+    needs: authorize
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     environment:
@@ -79,8 +119,8 @@ jobs:
             AZURE_RESOURCE_GROUP SOURCE_APIM_NAME TARGET_APIM_NAME; do
             [[ -n "${!name}" ]] || fail "Missing GitHub variable: $name"
           done
-          [[ "$AZURE_SUBSCRIPTION_ID" == "$SUBSCRIPTION_ID" ]] ||
-            fail 'AZURE_SUBSCRIPTION_ID must match the approved subscription in common.sh.'
+          [[ "$AZURE_SUBSCRIPTION_ID" =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]] ||
+            fail 'AZURE_SUBSCRIPTION_ID must be an Azure subscription UUID.'
           [[ "$SOURCE_APIM_NAME" != "$TARGET_APIM_NAME" ]] ||
             fail 'Source and target APIM instances must be different.'
 

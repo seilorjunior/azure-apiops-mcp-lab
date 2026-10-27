@@ -1,5 +1,12 @@
 # APIops + Azure API Management MCP lab
 
+[![CI](https://github.com/seilorjunior/poc-apiops/actions/workflows/ci.yml/badge.svg)](https://github.com/seilorjunior/poc-apiops/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+**Independent community example.** This is not an official Microsoft product,
+supported reference architecture or production-ready deployment. The upstream
+[Azure APIops CLI](https://github.com/Azure/apiops-cli) is a separate project.
+
 **A reproducible proof of concept for promoting MCP configuration between two
 Developer-tier Azure API Management instances with the Azure APIops CLI.**
 
@@ -13,10 +20,11 @@ APIops extracts and publishes the APIM APIs. The acceptance test is a real MCP
 initialization, tool discovery and tool call against **both** gateways, not merely
 a successful deployment command.
 
-> **Status:** local application tests, mocked script tests, Bicep compilation and
-> local azd packaging have passed in earlier checks. A successful end-to-end Azure
-> deployment and promotion have not been established by those checks. Capacity,
-> policy, dependency-advisory and live acceptance checks still apply.
+> **Before use:** this lab creates **two billed Developer APIM instances** and a
+> billed App Service plan. There are [known dependency advisories](docs/dependency-risks.md).
+> Azure promotion is **disabled by default** and requires explicit opt-in and
+> protected environments. Review [validation scope](docs/validation.md); successful
+> sample runs do not certify another subscription or production deployment.
 
 ## Documentation
 
@@ -27,7 +35,9 @@ a successful deployment command.
 | [GitHub Actions promotion](docs/github-actions.md) | Manual dry-run/apply workflow, Azure OIDC, environment approvals and configuration variables. |
 | [Testing and security](docs/testing-and-security.md) | What each test proves, live acceptance checklist, trust boundaries and production gaps. |
 | [Troubleshooting](docs/troubleshooting.md) | Parameter/hook failures, authentication errors, tool binding failures and partial deployments. |
-| [Deployment plan and validation record](.azure/deployment-plan.md) | Project-specific preparation evidence and unresolved deployment gates. |
+| [Validation scope](docs/validation.md) | What offline and live checks prove, and remaining gates. |
+| [Dependency risk register](docs/dependency-risks.md) | Known advisories, upstream blockers and opt-in policy. |
+| [Contributing](CONTRIBUTING.md) / [Security policy](SECURITY.md) | Local CI, contribution review and private vulnerability reporting. |
 
 ## Architecture at a glance
 
@@ -99,6 +109,23 @@ These tests do not deploy resources. Script tests mock Azure and APIops.
 `npm test` selects the PowerShell regression suites on Windows and the Bash suite
 on Linux/macOS. azd also selects platform-specific hooks automatically.
 
+### Reuse this example
+
+1. Fork this repository or create a copy under your account. The Azure-connected
+   workflow does not receive the original repository's identity or variables.
+2. Run `npm ci` and `npm test`; no Azure credentials are needed for offline tests.
+3. Follow the [azd quickstart](docs/operations.md#deploy-with-azd-only-after-explicit-approval):
+   choose your subscription and region, provide `APIM_PUBLISHER_EMAIL`, review
+   infrastructure preview, then explicitly deploy.
+4. Verify source MCP endpoints and preview promotion. Apply only after reviewing
+   the target and publisher output.
+5. For GitHub execution, configure your own OIDC identity, resource variables,
+   required reviewers and branch restrictions using the [workflow guide](docs/github-actions.md).
+   Set `ENABLE_AZURE_PROMOTION=true` only after reviewing dependency risks.
+6. When finished, inspect the dedicated resource group and follow
+   [cleanup instructions](docs/operations.md#cleanup-and-cost-control). Billing
+   continues until the Azure resources are removed.
+
 | Operation | Windows PowerShell | Linux/macOS Bash |
 | --- | --- | --- |
 | Shared helpers | [Common.ps1](scripts/ps1/Common.ps1) | [common.sh](scripts/bash/common.sh) |
@@ -159,8 +186,8 @@ contents into documentation, logs, screenshots or support requests.
 | [docs/](docs/) | Operator documentation. |
 
 Local `.azure/<environment>` state, `.local/backend` staging and `artifacts/run-*`
-are generated and excluded from Git. The deployment plan is the deliberate
-exception under `.azure`. No documentation relies on the contents of a local `.env`.
+are generated and excluded from Git. No documentation relies on the contents
+of a local `.env`.
 
 ## Deliberate boundaries
 

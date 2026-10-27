@@ -2,7 +2,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $script:Root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-$script:SubscriptionId = '00000000-0000-4000-8000-000000000001'
+$script:SubscriptionId = $env:AZURE_SUBSCRIPTION_ID
 $script:ApiVersion = '2025-09-01-preview'
 
 function Invoke-Checked {
@@ -23,9 +23,13 @@ function Invoke-AzJson {
 }
 
 function Assert-Subscription {
+    $subscription = [guid]::Empty
+    if (-not [guid]::TryParseExact($script:SubscriptionId, 'D', [ref]$subscription)) {
+        throw 'Set AZURE_SUBSCRIPTION_ID to the intended Azure subscription UUID.'
+    }
     $account = Invoke-AzJson -Arguments @('account', 'show')
     if ($account.id -ne $script:SubscriptionId) {
-        throw "Select the approved subscription first: az account set --subscription $script:SubscriptionId"
+        throw "Select the configured subscription first: az account set --subscription $script:SubscriptionId"
     }
 }
 

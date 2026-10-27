@@ -124,8 +124,10 @@ function Invoke-MockApiops {
 
 $previousVersion = $env:AZURE_API_VERSION
 $previousKey = $env:POC_APIM_KEY
+$previousSubscription = $env:AZURE_SUBSCRIPTION_ID
 Set-Alias -Name $mockCli -Value Invoke-MockApiops
 try {
+    $env:AZURE_SUBSCRIPTION_ID = '00000000-0000-4000-8000-000000000001'
     $env:AZURE_API_VERSION = 'test-previous-version'
     $env:POC_APIM_KEY = 'test-previous-key'
     $promote = Join-Path $mockRoot 'scripts\ps1\Promote.ps1'
@@ -211,6 +213,7 @@ try {
     Remove-Item -LiteralPath "Alias:$mockCli"
     $env:AZURE_API_VERSION = $previousVersion
     $env:POC_APIM_KEY = $previousKey
+    $env:AZURE_SUBSCRIPTION_ID = $previousSubscription
     foreach ($folder in $global:ApiopsPromotionMock.Folders) {
         for ($attempt = 1; $attempt -le 5 -and (Test-Path -LiteralPath $folder); $attempt++) {
             try {

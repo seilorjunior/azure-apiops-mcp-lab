@@ -50,17 +50,19 @@ Manager and both gateway HTTPS endpoints.
 
 The workflow uses Azure CLI from the GitHub-hosted Ubuntu image. APIops uses that
 authenticated CLI context; it does not need a client secret or an azd environment.
-The subscription must match the approved subscription in
-[common.sh](../scripts/bash/common.sh). Configuring a different subscription in
-GitHub does not bypass that guard.
+The `AZURE_SUBSCRIPTION_ID` variable chooses the intended subscription.
+[common.sh](../scripts/bash/common.sh) requires it to match the authenticated
+Azure CLI account; no personal subscription ID is embedded in the scripts.
 
 ## 2. Create the GitHub environments
 
 In **Settings > Environments**, create these environments before running:
 
-1. **`apim-preview`**: restrict deployment branches to the repository default branch.
-2. **`apim-promotion`**: restrict to the default branch, enable required reviewers,
-   and prevent self-review. Disable administrator bypass where your policy allows.
+1. **`apim-preview`**: use a custom deployment-branch policy allowing only the exact
+   default branch (branch type, no tag policy), enable required reviewers and
+   prevent self-review.
+2. **`apim-promotion`**: apply the same branch and reviewer rules. Disable
+   administrator bypass where your policy allows.
 
 Required reviewers and some protection rules depend on repository visibility and
 GitHub plan. Verify availability before enabling apply. **Naming an environment
@@ -70,6 +72,16 @@ maintainer has configured and verified the protection rules.
 
 The environment gate applies to the entire job, including tests. After approval,
 configuration validation and `npm test` run before Azure login.
+
+Azure execution is disabled by default. After reviewing
+[dependency risks](dependency-risks.md), configure both environments, then set
+the repository variable `ENABLE_AZURE_PROMOTION=true`. A separate job without
+OIDC permissions checks that opt-in, the default branch and both environments'
+exact branch restrictions, reviewers and self-review prevention before the
+Azure-connected job can start. Missing or unsupported protections fail closed.
+Forks must opt in separately; do not enable promotion on untrusted PR events.
+If you are the only reviewer, another authorized user must dispatch the run,
+or self-review prevention will correctly block approval.
 
 ## 3. Configure Azure OIDC trust and authorization
 
@@ -121,12 +133,11 @@ performs a resource-group GET during publisher preflight, including dry-run;
 roles scoped only to child APIM resources do not authorize that parent read.
 No subscription-wide assignment is necessary.
 
-For this dedicated PoC, the operator instead explicitly authorized **Contributor**
-on `rg-apiops`. That role covers preflight and management of all resources in
-the group, including App Service, and permits writes and deletes. It is broader
-than the recommended Reader plus APIM-scoped roles and does not grant role-
-assignment permissions. The original two APIM assignments remain but are
-redundant under the resource-group Contributor assignment.
+An owner can explicitly choose resource-group **Contributor** for a disposable
+lab, but it covers all resources in the group, including App Service, and permits
+writes and deletes. It is broader than Reader plus APIM-scoped roles and is not
+the recommended reusable-example default. Preparing this public example does
+not automatically change existing Azure role assignments.
 
 This built-in role is intentionally broad within each service: it permits source
 writes as well as target writes and access to secrets. The script only reads the
@@ -153,7 +164,7 @@ Under each environment's **Environment variables**, create:
 | --- | --- |
 | `AZURE_CLIENT_ID` | Application/client ID of the trusted identity (not its object ID). |
 | `AZURE_TENANT_ID` | Identity's Microsoft Entra directory/tenant ID. |
-| `AZURE_SUBSCRIPTION_ID` | Subscription allowed by the script guard. |
+| `AZURE_SUBSCRIPTION_ID` | Your intended subscription UUID, checked against the authenticated account. |
 | `AZURE_RESOURCE_GROUP` | Existing lab resource group (`AZURE_RESOURCE_GROUP` from azd outputs). |
 | `SOURCE_APIM_NAME` | Existing source instance (`SOURCE_APIM_NAME` output). |
 | `TARGET_APIM_NAME` | Existing target instance (`TARGET_APIM_NAME` output). |
@@ -179,6 +190,8 @@ These are identifiers, not passwords. No `AZURE_CLIENT_SECRET`, backend credenti
 or APIM subscription key should be stored for this workflow. It fetches the two
 test keys at runtime using the authenticated management identity. Do not copy or
 upload the local azd environment file. Keep shell tracing and CLI debug logging off.
+`ENABLE_AZURE_PROMOTION` is a separate repository-level opt-in variable, not an
+Azure credential; leave it unset or `false` until all setup and risk review is done.
 
 ## 5. Run preview, then apply
 

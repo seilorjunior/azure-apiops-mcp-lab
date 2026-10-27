@@ -3,7 +3,7 @@ set -Eeuo pipefail
 trap 'status=$?; printf "ERROR: command failed in %s:%s (exit %s)\n" "${BASH_SOURCE[0]}" "$LINENO" "$status" >&2; exit "$status"' ERR
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
-SUBSCRIPTION_ID='00000000-0000-4000-8000-000000000001'
+SUBSCRIPTION_ID="${AZURE_SUBSCRIPTION_ID:-}"
 API_VERSION='2025-09-01-preview'
 
 fail() {
@@ -29,9 +29,11 @@ json_get() {
 
 assert_subscription() {
     local account
+    [[ "$SUBSCRIPTION_ID" =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]] ||
+        fail 'Set AZURE_SUBSCRIPTION_ID to the intended Azure subscription UUID.'
     account="$(az_json account show | json_get id)"
     [[ "$account" == "$SUBSCRIPTION_ID" ]] ||
-        fail "Select the approved subscription first: az account set --subscription $SUBSCRIPTION_ID"
+        fail "Select the configured subscription first: az account set --subscription $SUBSCRIPTION_ID"
 }
 
 service_url() {

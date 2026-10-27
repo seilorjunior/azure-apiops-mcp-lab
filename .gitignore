@@ -4,5 +4,9 @@ artifacts/
 *.zip
 infra/main.json
 .env
-.azure/*
-!.azure/deployment-plan.md
+.env.*
+!.env.example
+*.pem
+*.pfx
+*.key
+.azure/

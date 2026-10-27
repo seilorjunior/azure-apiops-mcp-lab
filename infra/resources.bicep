@@ -1,7 +1,8 @@
 targetScope = 'resourceGroup'
 
 param location string = 'eastus2'
-param publisherEmail string = 'you@example.com'
+@minLength(3)
+param publisherEmail string
 param publisherName string = 'APIops MCP PoC'
 param environmentName string
 param nameSuffix string = uniqueString(resourceGroup().id)

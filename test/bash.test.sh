@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+export AZURE_SUBSCRIPTION_ID='00000000-0000-4000-8000-000000000001'
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 MOCK_DIR="$(mktemp -d)"
 export MOCK_LOG="$MOCK_DIR/calls.log"
@@ -257,9 +258,14 @@ export AZURE_SUBSCRIPTION_ID='00000000-0000-4000-8000-000000000001'
 unset POC_BACKEND_KEY
 bash "$ROOT/scripts/bash/preprovision.sh"
 POC_BACKEND_KEY='test-only-key-with-at-least-32-characters' bash "$ROOT/scripts/bash/preprovision.sh"
-if AZURE_SUBSCRIPTION_ID=wrong bash "$ROOT/scripts/bash/preprovision.sh" > "$MOCK_DIR/failure.log" 2>&1; then
+if AZURE_SUBSCRIPTION_ID=00000000-0000-4000-8000-000000000002 bash "$ROOT/scripts/bash/preprovision.sh" > "$MOCK_DIR/failure.log" 2>&1; then
     fail_test 'Wrong subscription must fail.'
 fi
+grep -q 'configured subscription' "$MOCK_DIR/failure.log"
+if AZURE_SUBSCRIPTION_ID='' bash "$ROOT/scripts/bash/preprovision.sh" > "$MOCK_DIR/failure.log" 2>&1; then
+    fail_test 'Missing subscription must fail.'
+fi
+grep -q 'Set AZURE_SUBSCRIPTION_ID' "$MOCK_DIR/failure.log"
 if MOCK_NPM_EXIT=1 bash "$ROOT/scripts/bash/preprovision.sh" > "$MOCK_DIR/failure.log" 2>&1; then
     fail_test 'Failed local tests must block provisioning.'
 fi

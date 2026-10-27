@@ -54,10 +54,11 @@ azd env get-value AZURE_SUBSCRIPTION_ID
 azd env get-value AZURE_LOCATION
 ```
 
-The approved subscription is fixed in
-[Common.ps1](../scripts/ps1/Common.ps1) and [common.sh](../scripts/bash/common.sh).
-Correct the selected account/environment or
-deliberately adapt the guard and tests together.
+Both [Common.ps1](../scripts/ps1/Common.ps1) and
+[common.sh](../scripts/bash/common.sh) require the process variable
+`AZURE_SUBSCRIPTION_ID` to be a UUID matching the active Azure CLI account.
+Load it explicitly for direct script calls, or select the correct azd environment
+for hooks. Do not remove the mismatch guard to work around an incorrect context.
 
 The templates use `AZURE_LOCATION` from azd, not the region shown in a documentation
 example. Brazil South is `brazilsouth`; selecting it does not verify service/SKU

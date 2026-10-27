@@ -14,6 +14,12 @@ function npm {
     $global:LASTEXITCODE = $global:ApiopsPreprovisionMock.ExitCode
 }
 
+function az {
+    if ((@($args) -join ' ') -notmatch '^account show ') { throw 'Unexpected Azure invocation.' }
+    $global:LASTEXITCODE = 0
+    return '{"id":"00000000-0000-4000-8000-000000000001"}'
+}
+
 try {
     $env:AZURE_SUBSCRIPTION_ID = '00000000-0000-4000-8000-000000000001'
     $env:POC_BACKEND_KEY = $null
@@ -26,17 +32,26 @@ try {
     if ($global:ApiopsPreprovisionMock.Calls -ne 2) {
         throw 'Environment-supplied parameters must also allow local tests.'
     }
-    $env:AZURE_SUBSCRIPTION_ID = 'incorrect-subscription'
+    $env:AZURE_SUBSCRIPTION_ID = '00000000-0000-4000-8000-000000000002'
     $rejected = $false
     try {
         & $hook
     } catch {
-        if ($_.Exception.Message -notmatch 'approved subscription') { throw }
+        if ($_.Exception.Message -notmatch 'configured subscription') { throw }
         $rejected = $true
     }
     if (-not $rejected -or $global:ApiopsPreprovisionMock.Calls -ne 2) {
         throw 'The subscription guard must reject the request before invoking npm.'
     }
+    $env:AZURE_SUBSCRIPTION_ID = $null
+    $rejected = $false
+    try {
+        & $hook
+    } catch {
+        if ($_.Exception.Message -notmatch 'Set AZURE_SUBSCRIPTION_ID') { throw }
+        $rejected = $true
+    }
+    if (-not $rejected) { throw 'Missing subscription must fail before tests.' }
     $env:AZURE_SUBSCRIPTION_ID = '00000000-0000-4000-8000-000000000001'
     $global:ApiopsPreprovisionMock.ExitCode = 1
     $rejected = $false

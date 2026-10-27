@@ -3,7 +3,8 @@ targetScope = 'subscription'
 @minLength(1)
 param environmentName string
 param location string
-param publisherEmail string = 'you@example.com'
+@minLength(3)
+param publisherEmail string
 @secure()
 @minLength(32)
 param backendKey string

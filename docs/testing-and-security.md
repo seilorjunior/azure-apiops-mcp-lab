@@ -19,7 +19,7 @@ successful package upload, or publisher exit code zero alone is insufficient.
 | Source live test | Backend health and both source MCP tools work after azd deployment. | Target API promotion or target operation binding. |
 | Promotion live test | Target binding/path checks, source snapshot comparison, source and target tool calls. | Full APIM backup/restore, global configuration preservation or disaster recovery. |
 
-The checked-in [validation record](../.azure/deployment-plan.md) separates completed
+The checked-in [validation record](validation.md) separates completed
 local checks from pending live checks. It must not be interpreted as current Azure
 resource health or a fresh dependency scan.
 
@@ -189,6 +189,9 @@ for inspecting staged files. Never publish a local `.env` file as project docume
 The earlier full audit reported ten findings, including development-only CLI paths;
 the production-only audit reported five. Those counts are a historical snapshot,
 not a current clean bill of health. Re-evaluate before exposing the lab:
+
+See [the dependency risk register](dependency-risks.md) for the dated advisory
+identifiers, compatibility constraints and Azure workflow opt-in policy.
 
 ```powershell
 npm audit
