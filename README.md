@@ -121,6 +121,7 @@ on Linux/macOS. azd also selects platform-specific hooks automatically.
    the target and publisher output.
 5. For GitHub execution, configure your own OIDC identity, resource variables,
    required reviewers and branch restrictions using the [workflow guide](docs/github-actions.md).
+   Configure your numeric GitHub user ID in `APIM_PROMOTION_ALLOWED_ACTOR_ID`.
    Set `ENABLE_AZURE_PROMOTION=true` only after reviewing dependency risks.
 6. When finished, inspect the dedicated resource group and follow
    [cleanup instructions](docs/operations.md#cleanup-and-cost-control). Billing
