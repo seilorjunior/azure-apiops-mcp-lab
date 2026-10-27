@@ -97,7 +97,7 @@ test('both promotion jobs authorize only the configured dispatcher and re-run us
 });
 
 test('workflow actions are SHA pinned and never upload extracted artifacts', () => {
-  for (const name of ['ci', 'promote']) {
+  for (const name of ['ci', 'promote', 'dependency-audit']) {
     const workflow = readWorkflow(name);
     for (const job of Object.values(workflow.jobs)) {
       for (const step of job.steps) {
@@ -106,6 +106,20 @@ test('workflow actions are SHA pinned and never upload extracted artifacts', () 
       }
     }
   }
+});
+
+test('dependency risk audit is scheduled/manual, unprivileged and separate from PR checks', () => {
+  const workflow = readWorkflow('dependency-audit');
+  assert.deepEqual(Object.keys(workflow.on).sort(), ['schedule', 'workflow_dispatch']);
+  assert.equal(workflow.on.schedule[0].cron, '23 9 * * 1');
+  assert.deepEqual(workflow.permissions, { contents: 'read' });
+  const job = workflow.jobs.audit;
+  assert.equal(job['timeout-minutes'], 10);
+  assert.equal(job.steps.find((step) => step.id === 'audit').run, 'npm run audit:dependencies');
+  assert.ok(job.steps.some((step) => step.run === 'npm ci --ignore-scripts --no-audit'));
+  assert.match(job.steps.at(-1).if, /failure\(\).*steps\.audit\.outcome == 'skipped'/);
+  assert.doesNotMatch(JSON.stringify(workflow), /azure\/login|id-token|secrets\.|github\.token|continue-on-error|pull_request/);
+  assert.doesNotMatch(JSON.stringify(readWorkflow('ci')), /audit:dependencies/);
 });
 
 test('promotion uses private identifiers and always renders an allowlisted summary', () => {

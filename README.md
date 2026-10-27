@@ -26,6 +26,12 @@ a successful deployment command.
 > protected environments. Review [validation scope](docs/validation.md); successful
 > sample runs do not certify another subscription or production deployment.
 
+Dependency risks are tracked by a separate weekly/manual
+[audit workflow](.github/workflows/dependency-audit.yml). It fails on unaccepted
+high/critical advisories, expired exceptions or audit errors. Run
+`npm run audit:dependencies` locally after `npm ci`; normal PR CI stays offline.
+See the [audit policy and exception process](docs/dependency-risks.md#automated-tracking).
+
 ## Documentation
 
 | Read this | To understand |

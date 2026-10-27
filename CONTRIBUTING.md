@@ -44,6 +44,10 @@ These GitHub settings are not installed by copying repository files.
   are not passwords, but there is no reason to embed a contributor's real IDs.
 - Do not force dependency overrides or SDK/Express downgrades to hide audit
   warnings. Document upstream blockers and validate compatible fixes.
+- Review the separate [dependency-risk audit](docs/dependency-risks.md#automated-tracking)
+  when changing dependencies. Any proposed exception needs an exact advisory,
+  package and scope, a responsible owner, a reason and a UTC expiry date. Keep
+  expired or resolved exceptions out of the policy; do not renew them automatically.
 
 Contributions are provided under the [MIT license](LICENSE). Security issues
 must follow [the private reporting policy](SECURITY.md), not public issue templates.
