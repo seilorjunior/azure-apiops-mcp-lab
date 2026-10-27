@@ -48,7 +48,13 @@ function findingsFrom(report, label) {
     && severities.every((severity) => report.metadata.vulnerabilities[severity]
       === entries.filter((entry) => entry.severity === severity).length),
     `${label} audit vulnerability counts do not match its entries.`);
-  assert(Object.keys(report.vulnerabilities).length === 0 || findings.size > 0,
+  const hasAdvisory = (name, visiting = new Set()) => {
+    if (visiting.has(name)) return false;
+    const next = new Set(visiting).add(name);
+    return report.vulnerabilities[name].via.some((via) => typeof via !== 'string'
+      || hasAdvisory(via, next));
+  };
+  assert(Object.keys(report.vulnerabilities).every((name) => hasAdvisory(name)),
     `${label} audit has vulnerabilities without advisory details.`);
   return findings;
 }
