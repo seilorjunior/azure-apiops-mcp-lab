@@ -56,4 +56,22 @@ function Test-McpEndpoints {
     } finally {
         $env:POC_APIM_KEY = $previous
     }
+
+}
+
+function Start-Stage {
+    param([string]$Name)
+    Invoke-Checked -Command node -Arguments @((Join-Path $script:Root 'scripts\report.mjs'), 'start', $Name)
+}
+
+function Complete-Stage {
+    param([string]$Name)
+    Invoke-Checked -Command node -Arguments @((Join-Path $script:Root 'scripts\report.mjs'), 'pass', $Name)
+}
+
+function Test-Preflight {
+    param([string]$ResourceGroup, [string]$SourceApimName, [string]$TargetApimName)
+    Invoke-Checked -Command node -Arguments @((Join-Path $script:Root 'scripts\preflight.mjs'),
+        '--resource-group', $ResourceGroup, '--source-apim-name', $SourceApimName,
+        '--target-apim-name', $TargetApimName)
 }

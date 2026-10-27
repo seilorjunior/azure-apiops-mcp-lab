@@ -66,23 +66,36 @@ source_snapshot() {
 
 cd -- "$ROOT"
 export AZURE_API_VERSION="$API_VERSION"
+test_preflight "$resource_group" "$source_apim" "$target_apim"
+start_stage source-mcp
 test_mcp_endpoints "$gateway" source "$key"
+pass_stage source-mcp
+start_stage source-snapshot
 before="$(source_snapshot)"
+pass_stage source-snapshot
 run_id="$(node --input-type=module -e 'import { randomUUID } from "node:crypto"; console.log(randomUUID());')"
 folder="$ROOT/artifacts/run-$run_id"
 filter="$ROOT/config/source-filter.yaml"
 context=(--subscription-id "$SUBSCRIPTION_ID" --resource-group "$resource_group")
+start_stage extraction
 "${cli[@]}" extract "${context[@]}" --service-name "$source_apim" \
     --output "$folder" --filter "$filter" --no-transitive
+pass_stage extraction
+start_stage artifact-validation
 printf '%s' "$before" | node "$ROOT/scripts/validate-extraction.mjs" "$folder"
 publish=(publish "${context[@]}" --service-name "$target_apim" --source "$folder" --filter "$filter" --no-transitive)
+start_stage publisher-preview
 "${cli[@]}" "${publish[@]}" --dry-run
+pass_stage publisher-preview
 if [[ "$apply" == false ]]; then
     printf 'Dry-run complete. Artifacts: %s\n' "$folder"
     printf 'Review changes to %s, then re-run with --apply to publish and test.\n' "$target_apim"
     exit 0
 fi
+start_stage publication
 "${cli[@]}" "${publish[@]}"
+pass_stage publication
+start_stage target-validation
 for name in poc-rest poc-native poc-proxy; do
     target="$(az_json rest --url "$target_service/apis/$name?api-version=$API_VERSION")"
     if [[ "$name" == poc-native ]]; then
@@ -97,8 +110,15 @@ for name in poc-rest poc-native poc-proxy; do
     [[ "$actual_path" == "$expected_path" ]] ||
         fail "Target API $name did not preserve the canonical gateway path."
 done
+pass_stage target-validation
+start_stage source-preservation
 after="$(source_snapshot)"
 [[ "$after" == "$before" ]] || fail 'Source API configuration changed during promotion.'
+pass_stage source-preservation
+start_stage source-mcp
 test_mcp_endpoints "$gateway" source "$key"
+pass_stage source-mcp
+start_stage target-mcp
 test_mcp_endpoints "$target_gateway" target "$target_key"
+pass_stage target-mcp
 printf 'PASS: both MCP modes promoted; source configuration unchanged. Artifacts: %s\n' "$folder"

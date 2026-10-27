@@ -148,6 +148,14 @@ performs a resource-group GET during publisher preflight, including dry-run;
 roles scoped only to child APIM resources do not authorize that parent read.
 No subscription-wide assignment is necessary.
 
+Preflight additionally reads the backend App Service, its plan/configuration,
+application settings and both APIM named-value contents. The management identity
+needs the read actions plus `Microsoft.Web/sites/config/list/Action` at the
+backend application scope and
+`Microsoft.ApiManagement/service/namedValues/listValue/action` on both named
+values. Reader alone cannot list these secret values. Use administrator-reviewed
+scoped permissions; the workflow never creates role assignments or prints values.
+
 An owner can explicitly choose resource-group **Contributor** for a disposable
 lab, but it covers all resources in the group, including App Service, and permits
 writes and deletes. It is broader than Reader plus APIM-scoped roles and is not
@@ -171,22 +179,34 @@ Custom role definitions and least-privilege validation are not supplied by this 
 No App Service deployment permissions, Owner role or role-assignment permissions
 are needed by the promotion workflow.
 
-## 4. Set configuration variables
+## 4. Set private identifiers and configuration variables
 
-Under each environment's **Environment variables**, create:
+Create these **Actions secrets**, at repository level or on both environments:
 
-| Variable | Value |
+| Secret | Value |
 | --- | --- |
 | `AZURE_CLIENT_ID` | Application/client ID of the trusted identity (not its object ID). |
 | `AZURE_TENANT_ID` | Identity's Microsoft Entra directory/tenant ID. |
 | `AZURE_SUBSCRIPTION_ID` | Your intended subscription UUID, checked against the authenticated account. |
+
+These are identifiers rather than authentication secrets, but storing them as
+Actions secrets registers their exact values for log masking. OIDC still uses no
+client secret. Do not retain duplicate identifier variables after migrating the
+workflow; variables alone do not provide masking. This does not erase older logs
+or conceal resource names and every possible identifier in third-party output.
+
+Under **Actions variables**, create:
+
+| Variable | Value |
+| --- | --- |
 | `AZURE_RESOURCE_GROUP` | Existing lab resource group (`AZURE_RESOURCE_GROUP` from azd outputs). |
+| `AZURE_WEBAPP_NAME` | Existing shared MCP App Service, required by preflight. |
 | `SOURCE_APIM_NAME` | Existing source instance (`SOURCE_APIM_NAME` output). |
 | `TARGET_APIM_NAME` | Existing target instance (`TARGET_APIM_NAME` output). |
 
-Use the same resource group and APIM names in both environments. Client IDs may
-differ if you use separate identities. Repository-level Actions variables can
-hold shared values; environment variables take precedence.
+Use the same resource group and APIM names in both environments. Client-ID secrets
+may differ if you use separate identities. Environment configuration takes
+precedence over repository-level configuration.
 
 The workflow also exposes these deployment-context variables when configured.
 They do not provision resources or replace the promotion script's live gateway
@@ -196,12 +216,11 @@ discovery:
 | --- | --- |
 | `AZURE_ENV_NAME` | Existing azd environment name, such as `apiops`. |
 | `AZURE_LOCATION` | Deployed Azure region, such as `brazilsouth`. |
-| `AZURE_WEBAPP_NAME` | Existing shared MCP App Service name. |
 | `BACKEND_URL` | Existing shared backend HTTPS base URL. |
 | `SOURCE_GATEWAY_URL` | Source APIM HTTPS gateway base URL. |
 | `TARGET_GATEWAY_URL` | Target APIM HTTPS gateway base URL. |
 
-These are identifiers, not passwords. No `AZURE_CLIENT_SECRET`, backend credential
+No `AZURE_CLIENT_SECRET`, backend credential
 or APIM subscription key should be stored for this workflow. It fetches the two
 test keys at runtime using the authenticated management identity. Do not copy or
 upload the local azd environment file. Keep shell tracing and CLI debug logging off.
@@ -223,6 +242,18 @@ remote repository automatically.
 4. Run the workflow again with `apply`.
 5. An authorized reviewer checks the requested environment and approves the job.
 6. Require the final success summary: publication alone is not acceptance.
+
+The summary runs even after failure. It contains only allowlisted stage names,
+phase/status/timing, preview/apply mode, validated API count and CLI version. It
+distinguishes publication from publisher preview and marks unfinished stages
+incomplete instead of claiming success. Failures before checkout get a static
+setup summary; authorization failure gets a separate no-Azure-job summary.
+No raw error bodies, endpoints, identifiers, credentials or exports are included.
+
+The detailed preflight executes before source MCP checks and extraction. It
+rejects Free/Shared hosting, disabled Always On, missing dependencies and mismatched
+credentials. Failed-job re-runs still enforce the enabled flag and permitted user
+before checkout/login. No new Azure access is granted automatically.
 
 GitHub CLI equivalents, from a clone with the correct remote:
 

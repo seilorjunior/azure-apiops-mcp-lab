@@ -119,7 +119,7 @@ on Linux/macOS. azd also selects platform-specific hooks automatically.
    infrastructure preview, then explicitly deploy.
 4. Verify source MCP endpoints and preview promotion. Apply only after reviewing
    the target and publisher output.
-5. For GitHub execution, configure your own OIDC identity, resource variables,
+5. For GitHub execution, configure your own OIDC identity, private identifier secrets, resource variables,
    required reviewers and branch restrictions using the [workflow guide](docs/github-actions.md).
    Configure your numeric GitHub user ID in `APIM_PROMOTION_ALLOWED_ACTOR_ID`.
    Set `ENABLE_AZURE_PROMOTION=true` only after reviewing dependency risks.
@@ -137,6 +137,13 @@ on Linux/macOS. azd also selects platform-specific hooks automatically.
 
 Execute `.sh` scripts with `bash`; do not source entry-point scripts into your
 interactive shell. Shared JavaScript MCP clients remain directly under `scripts`.
+
+Promotion and postdeploy verification first run a read-only
+[preflight](scripts/preflight.mjs): supported hosting tier, Always On, backend
+health, both APIM dependencies and private credential consistency. They fail on
+drift rather than changing the hosting tier or permissions automatically.
+MCP failures identify the protocol phase and elapsed time. GitHub runs produce a
+sanitized summary on success or failure; raw exports are never uploaded.
 
 **First deployment:** follow [the azd runbook](docs/operations.md#deploy-with-azd-only-after-explicit-approval)
 to configure authentication, the repository's subscription guard and an environment,

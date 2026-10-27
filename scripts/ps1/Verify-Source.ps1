@@ -6,6 +6,7 @@ foreach ($name in @('AZURE_RESOURCE_GROUP', 'SOURCE_APIM_NAME', 'TARGET_APIM_NAM
     }
 }
 Assert-Subscription
+Test-Preflight -ResourceGroup $env:AZURE_RESOURCE_GROUP -SourceApimName $env:SOURCE_APIM_NAME -TargetApimName $env:TARGET_APIM_NAME
 $response = Invoke-WebRequest -Uri "$env:BACKEND_URL/health" -TimeoutSec 60
 if (($response.Content | ConvertFrom-Json).status -ne 'ok') {
     throw 'Backend health check failed.'
