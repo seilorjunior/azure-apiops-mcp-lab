@@ -26,6 +26,12 @@ a successful deployment command.
 > protected environments. Review [validation scope](docs/validation.md); successful
 > sample runs do not certify another subscription or production deployment.
 
+Dependency risks are tracked by a separate weekly/manual
+[audit workflow](.github/workflows/dependency-audit.yml). It fails on unaccepted
+high/critical advisories, expired exceptions or audit errors. Run
+`npm run audit:dependencies` locally after `npm ci`; normal PR CI stays offline.
+See the [audit policy and exception process](docs/dependency-risks.md#automated-tracking).
+
 ## Documentation
 
 | Read this | To understand |
@@ -112,7 +118,11 @@ on Linux/macOS. azd also selects platform-specific hooks automatically.
 ### Reuse this example
 
 1. Fork this repository or create a copy under your account. The Azure-connected
-   workflow does not receive the original repository's identity or variables.
+   workflow does not receive the original repository's identity, secrets or
+   variables. Repository rulesets, branch protections and environment approval
+   settings are not supplied by the copied files. Complete the
+   [repository setup checklist](docs/github-actions.md#repository-setup-checklist)
+   in your own repository.
 2. Run `npm ci` and `npm test`; no Azure credentials are needed for offline tests.
 3. Follow the [azd quickstart](docs/operations.md#deploy-with-azd-only-after-explicit-approval):
    choose your subscription and region, provide `APIM_PUBLISHER_EMAIL`, review
@@ -126,6 +136,18 @@ on Linux/macOS. azd also selects platform-specific hooks automatically.
 6. When finished, inspect the dedicated resource group and follow
    [cleanup instructions](docs/operations.md#cleanup-and-cost-control). Billing
    continues until the Azure resources are removed.
+
+### Pull request reviews
+
+The upstream repository automatically requests Copilot reviews for new pull
+requests targeting any branch, including drafts. New pushes do not automatically
+request another review. Copilot feedback does not satisfy the required human
+approval or replace CI.
+
+Fork maintainers must configure their own Copilot ruleset; copying the workflow
+files does not enable automatic reviews. See
+[review setup](docs/github-actions.md#configure-pull-request-protection-and-copilot)
+and the [contribution guide](CONTRIBUTING.md#changes-and-review).
 
 | Operation | Windows PowerShell | Linux/macOS Bash |
 | --- | --- | --- |

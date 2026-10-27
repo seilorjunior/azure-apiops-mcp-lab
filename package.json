@@ -12,7 +12,8 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "start": "node src/server.mjs",
-    "test": "node --test test/server.test.mjs test/filter.test.mjs test/workflow.test.mjs test/preflight.test.mjs test/report.test.mjs test/mcp-client.test.mjs && node test/run-shell-tests.mjs",
+    "test": "node --test test/server.test.mjs test/filter.test.mjs test/workflow.test.mjs test/preflight.test.mjs test/report.test.mjs test/mcp-client.test.mjs test/audit-dependencies.test.mjs && node test/run-shell-tests.mjs",
+    "audit:dependencies": "node scripts/audit-dependencies.mjs",
     "test:mcp": "node scripts/test-mcp.mjs"
   },
   "dependencies": {

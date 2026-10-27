@@ -40,6 +40,69 @@ FIFO queue: a newer pending run can replace an older pending run. This group doe
 not coordinate local scripts, azd, portal edits or other workflows; do not run those
 against the same lab concurrently.
 
+## Repository setup checklist
+
+A fork or source copy supplies files, not a configured Azure-connected repository.
+Configure and verify these settings in your own repository. Do not assume upstream
+rulesets, branch protections, environment approvals, secrets, variables or Azure
+OIDC trust apply to the copy.
+
+- [ ] Keep `ENABLE_AZURE_PROMOTION` unset or `false` during setup.
+- [ ] Run offline CI and configure the default branch's required checks and human
+      review using [PR protection setup](#configure-pull-request-protection-and-copilot).
+- [ ] Configure your own automatic Copilot review ruleset if your account supports it.
+      Copilot availability does not replace the human-review requirement.
+- [ ] Deploy and verify your own lab using [step 1](#1-deploy-and-verify-the-lab-first).
+- [ ] Create and verify both protected environments using
+      [step 2](#2-create-the-github-environments). The environment names alone do
+      not configure approval gates.
+- [ ] Configure Azure OIDC trust for your repository and both environments, then
+      grant scoped authorization using
+      [step 3](#3-configure-azure-oidc-trust-and-authorization).
+- [ ] Add your own three identifier secrets and required resource variables using
+      [step 4](#4-set-private-identifiers-and-configuration-variables).
+      Check for environment-level values that override repository settings.
+- [ ] Set `APIM_PROMOTION_ALLOWED_ACTOR_ID` to your numeric user ID and configure
+      that same user as the only reviewer on both environments.
+- [ ] Review the [dependency risks](dependency-risks.md), then explicitly set
+      `ENABLE_AZURE_PROMOTION=true`.
+- [ ] Complete an approved dry-run and inspect its sanitized summary before
+      requesting apply using [step 5](#5-run-preview-then-apply).
+
+### Configure pull request protection and Copilot
+
+In **Settings > Rules > Rulesets**, or the branch-protection settings, protect
+your default branch with:
+
+- One required human approving review, dismissal of stale approvals and required
+  conversation resolution.
+- Strict required checks named `Test (ubuntu-24.04)`, `Test (windows-2025)` and
+  `Validate infrastructure`. Run CI first so GitHub can discover these names.
+- Administrator enforcement, with force pushes and branch deletion disabled.
+
+Automatic Copilot review is a separate native branch ruleset. To match the upstream
+repository, create it in **Settings > Rules > Rulesets** with:
+
+| Setting | Value |
+| --- | --- |
+| Enforcement | Active |
+| Target branches | Include all branches; no exclusions |
+| Bypass list | Empty |
+| Automatically request Copilot code review | Enabled |
+| Review draft pull requests | Enabled |
+| Review new pushes | Disabled |
+
+This requests one automatic review for new PRs, including drafts, targeting any
+branch. Request another review manually after changes when needed. For PRs already
+open when the rule is enabled, request Copilot from the PR's **Reviewers** menu.
+Availability and usage limits depend on your Copilot access and GitHub settings;
+see [GitHub's configuration guide](https://docs.github.com/en/copilot/how-tos/copilot-on-github/set-up-copilot/configure-code-review).
+
+Copilot feedback does not count as the required human approval. A PR author cannot
+approve their own PR to satisfy that requirement. The single-user environment
+approval policy below controls Azure jobs separately; it does not waive PR review.
+Do not add an Azure-connected or privileged PR workflow to request reviews.
+
 ## 1. Deploy and verify the lab first
 
 Follow the [deployment runbook](operations.md). Both Developer APIM instances,

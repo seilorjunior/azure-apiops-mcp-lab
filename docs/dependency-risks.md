@@ -4,6 +4,68 @@ This educational example is **not advisory-free**. Audit evidence below was
 checked on 2026-10-26. Re-run `npm audit` and `npm audit --omit=dev` before use;
 registry advisories and available releases change.
 
+## Automated tracking
+
+The [Dependency risk audit workflow](../.github/workflows/dependency-audit.yml)
+runs every Monday at 09:23 UTC and supports manual dispatch. GitHub schedules can
+be delayed and run from the default branch. The workflow becomes available after
+the files are merged into that branch; fork owners must enable scheduled Actions
+in their own repository.
+
+The audit restores locked dependencies without lifecycle scripts, then runs npm's
+JSON audits for the full tree and production dependencies. It writes a GitHub job
+summary with counts, advisory links, production/development scope and exception
+expiry. It has read-only repository permissions, uses no Azure identity or
+secrets, and does not upload raw reports or create issues.
+
+Run the same gate locally after `npm ci`:
+
+```text
+npm run audit:dependencies
+```
+
+| Result | Exit code | Meaning |
+| --- | --- | --- |
+| Passed | 0 | No unaccepted high/critical findings or expired exceptions. Lower-severity and accepted risks remain visible. |
+| Failed risk gate | 1 | At least one unaccepted high/critical advisory or an expired exception. |
+| Audit error | 2 | Registry/network/process failure, invalid report or invalid exception policy. No clean-risk result is available. |
+
+This is a separate scheduled/manual gate. Normal PR CI remains offline and does
+not require this audit to pass. Dependabot still proposes updates separately;
+the audit does not change packages, force fixes, merge updates or disable promotion.
+Maintainers must inspect failed runs and review exposure before Azure execution.
+
+### Time-limited exceptions
+
+The [exception policy](../config/dependency-exceptions.json) starts empty.
+The historical risks below are **not** automatically accepted by the gate.
+To propose acceptance, add an entry through a reviewed PR:
+
+```json
+{
+  "exceptions": [
+    {
+      "advisory": "GHSA-27r3-jxmh-p828",
+      "package": "body-parser",
+      "scope": "production",
+      "owner": "YOUR_GITHUB_LOGIN",
+      "reason": "Describe reviewed exposure, mitigation and the upstream remediation blocker.",
+      "expires": "YYYY-MM-DD"
+    }
+  ]
+}
+```
+
+Replace the owner, reason and expiry placeholders before submitting; the example
+does not authorize acceptance. Match the exact advisory, directly affected package
+and `production` or `development` scope shown by the audit. No wildcard exceptions
+are supported. Production scope takes precedence when a finding appears in both
+audits. Expiry is inclusive through that UTC date. Expired entries fail the gate
+even when the advisory is gone; remove resolved entries rather than automatically
+renewing them. Exceptions record risk acceptance, not remediation.
+
+## Historical audit evidence
+
 | Dependency path | Advisory | Status at review |
 | --- | --- | --- |
 | Express 5 -> body-parser 2.3.0 | GHSA-27r3-jxmh-p828 | High; affected `<2.4.0`, but 2.4.0 was not available in the checked registry. |
