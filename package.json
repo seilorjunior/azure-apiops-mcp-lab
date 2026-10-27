@@ -24,5 +24,13 @@
   },
   "devDependencies": {
     "@azure-tools/apiops-cli": "1.0.5"
+  },
+  "overrides": {
+    "@azure-tools/apiops-cli": {
+      "simple-git": "4.0.2"
+    },
+    "@azure/identity": {
+      "@azure/msal-node": "7.1.1"
+    }
   }
 }
