@@ -50,3 +50,16 @@ get_test_key() {
 test_mcp_endpoints() {
     POC_APIM_KEY="$3" node "$ROOT/scripts/test-mcp.mjs" "$1" "$2"
 }
+
+start_stage() {
+    node "$ROOT/scripts/report.mjs" start "$1"
+}
+
+pass_stage() {
+    node "$ROOT/scripts/report.mjs" pass "$1"
+}
+
+test_preflight() {
+    node "$ROOT/scripts/preflight.mjs" --resource-group "$1" \
+        --source-apim-name "$2" --target-apim-name "$3"
+}

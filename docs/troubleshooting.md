@@ -126,9 +126,18 @@ generic liveness URL.
 | MCP tool returns `isError` | Tool input or tool execution | `echo.message` must be a string of 1-200 characters; inspect safe error details. |
 | `get_status missing from tools/list` | Native MCP configuration | Tool name and `mcpTools` binding in the correct instance. |
 | `echo missing from tools/list` | Proxy/transport/backend selection | Proxy backend ID, `/mcp` URL and `streamable` transport configuration. |
+| Preflight rejects hosting or Always On | App Service configuration drift | F1/D1 do not support Always On. The lab's Bicep defines B1; review recurring cost before restoring the intended SKU. Preflight never scales the plan automatically. |
+| Native passes, proxy times out | External backend path | Check backend readiness, plan/Always On, credential consistency and APIM backend binding. Native uses a mock and does not prove backend availability. |
 
 Use the official MCP smoke test rather than treating a single raw HTTP request as
 proof of protocol compliance. It performs initialization before tool discovery/calls.
+
+The shared verifier now reports `initialize`, `tools/list` or `tools/call`,
+elapsed milliseconds, the 60-second deadline and a numeric error code when
+available. It deliberately omits raw response/tool-error bodies and credentials.
+Only readiness GETs receive bounded retries; a tool call or API publication is
+never replayed automatically. The Actions summary identifies failed/incomplete
+stages, including failures before extraction or Azure login.
 
 ## Source snapshot fails parsing `<policies>` as JSON
 

@@ -77,6 +77,10 @@ jobs:
               '.protection_rules | any(.type == "required_reviewers" and .prevent_self_review == false and (.reviewers | length == 1) and .reviewers[0].type == "User" and (.reviewers[0].reviewer.id | tostring) == $actor)' \
               <<< "$config" > /dev/null
           done
+      - name: Summarize authorization failure
+        if: failure()
+        run: |
+          printf '## APIM promotion\n\nAuthorization failed. No Azure job was started.\n' >> "$GITHUB_STEP_SUMMARY"
 
   promote:
     name: ${{ inputs.mode }} APIM promotion
@@ -94,11 +98,11 @@ jobs:
     env:
       PROMOTION_MODE: ${{ inputs.mode }}
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
-      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
       AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
-      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
       AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
       BACKEND_URL: ${{ vars.BACKEND_URL }}
@@ -150,17 +154,24 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Initialize sanitized run report
+        run: |
+          report="$RUNNER_TEMP/apiops-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.jsonl"
+          : > "$report"
+          printf 'APIOPS_REPORT_PATH=%s\n' "$report" >> "$GITHUB_ENV"
+
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
 
       - name: Validate promotion configuration
+        id: configuration
         run: |
           source scripts/bash/common.sh
           for name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID \
-            AZURE_RESOURCE_GROUP SOURCE_APIM_NAME TARGET_APIM_NAME; do
-            [[ -n "${!name}" ]] || fail "Missing GitHub variable: $name"
+            AZURE_RESOURCE_GROUP AZURE_WEBAPP_NAME SOURCE_APIM_NAME TARGET_APIM_NAME; do
+            [[ -n "${!name}" ]] || fail "Missing GitHub configuration: $name"
           done
           [[ "$AZURE_SUBSCRIPTION_ID" =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]] ||
             fail 'AZURE_SUBSCRIPTION_ID must be an Azure subscription UUID.'
@@ -171,24 +182,32 @@ jobs:
         run: npm ci
 
       - name: Run backend and Bash regression tests
+        id: tests
+        env:
+          APIOPS_REPORT_PATH: ''
         run: npm test
 
       - name: Install APIops CLI
+        id: cli
         run: |
           npm install -g @azure-tools/apiops-cli@1.0.5
-          apiops --version
+          version="$(apiops --version)"
+          printf '%s' "$version" | node scripts/report.mjs version
+          printf '%s\n' "$version"
 
       - name: Sign in to Azure with OIDC
+        id: login
         uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
         env:
           AZURE_CORE_OUTPUT: json
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           audience: api://AzureADTokenExchange
 
       - name: Extract, preview, and optionally publish and verify
+        id: promotion
         env:
           APIOPS_USE_GLOBAL: 'true'
         run: |
@@ -202,13 +221,17 @@ jobs:
           fi
           bash scripts/bash/promote.sh "${args[@]}"
 
-      - name: Record successful outcome
+      - name: Record sanitized outcome
+        if: always()
+        env:
+          REPORT_CONFIGURATION_OUTCOME: ${{ steps.configuration.outcome }}
+          REPORT_TESTS_OUTCOME: ${{ steps.tests.outcome }}
+          REPORT_CLI_OUTCOME: ${{ steps.cli.outcome }}
+          REPORT_LOGIN_OUTCOME: ${{ steps.login.outcome }}
+          REPORT_PROMOTION_OUTCOME: ${{ steps.promotion.outcome }}
         run: |
-          if [[ "$PROMOTION_MODE" == apply ]]; then
-            echo '### PASS: target APIs published and both gateways verified' >> "$GITHUB_STEP_SUMMARY"
-            echo 'Target bindings and paths passed; the source snapshot was unchanged.' >> "$GITHUB_STEP_SUMMARY"
+          if [[ -f scripts/report.mjs ]]; then
+            node scripts/report.mjs render
           else
-            echo '### PASS: source MCP checks, extraction and publisher dry-run' >> "$GITHUB_STEP_SUMMARY"
-            echo 'No target APIs were published. Review the publisher output before requesting apply.' >> "$GITHUB_STEP_SUMMARY"
+            printf '## APIM promotion\n\nSetup did not complete; no promotion result is available.\n' >> "$GITHUB_STEP_SUMMARY"
           fi
-          echo 'Extracted artifacts are intentionally not uploaded.' >> "$GITHUB_STEP_SUMMARY"

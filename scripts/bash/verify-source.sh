@@ -5,6 +5,7 @@ for name in AZURE_RESOURCE_GROUP SOURCE_APIM_NAME TARGET_APIM_NAME SOURCE_GATEWA
     [[ -n "${!name:-}" ]] || fail "Missing azd output $name. Provision the selected environment first."
 done
 assert_subscription
+test_preflight "$AZURE_RESOURCE_GROUP" "$SOURCE_APIM_NAME" "$TARGET_APIM_NAME"
 health="$(curl --fail --silent --show-error --max-time 60 "$BACKEND_URL/health" | json_get status)"
 [[ "$health" == 'ok' ]] || fail 'Backend health check failed.'
 service="$(service_url "$AZURE_RESOURCE_GROUP" "$SOURCE_APIM_NAME")"

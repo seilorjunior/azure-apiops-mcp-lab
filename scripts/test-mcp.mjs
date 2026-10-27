@@ -1,4 +1,5 @@
 import { verifyTool } from './mcp-client.mjs';
+import { record } from './report.mjs';
 
 const [gateway, environment = 'source'] = process.argv.slice(2);
 if (!gateway || !['source', 'target'].includes(environment)) {
@@ -15,6 +16,10 @@ for (const scenario of [
   { path: 'poc-proxy/mcp', toolName: 'echo', args: { message: 'apiops-proxy-ok' }, expected: /apiops-proxy-ok/ },
 ]) {
   const url = new URL(scenario.path, `${base.origin}/`).href;
-  await verifyTool({ ...scenario, url, headers });
+  const stage = `${environment}-${scenario.toolName === 'echo' ? 'proxy' : 'native'}`;
+  await verifyTool({ ...scenario, url, headers, onPhase: (event) => {
+    record({ stage, ...event });
+    console.log(`MCP ${stage} ${event.phase}: ${event.status}${event.elapsedMs === undefined ? '' : ` (${event.elapsedMs} ms)`}`);
+  } });
   console.log(`PASS ${environment} ${scenario.toolName}: initialize, tools/list, tools/call`);
 }

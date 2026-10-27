@@ -37,6 +37,9 @@ npm test
 | Suite | Coverage |
 | --- | --- |
 | [server.test.mjs](../test/server.test.mjs) | Seven tests: absent/short startup key, anonymous health, missing/wrong MCP credentials, official-client initialize/list/call, authenticated GET rejection, invalid tool input, compressed-body rejection. |
+| [preflight.test.mjs](../test/preflight.test.mjs) | Read-only source/target dependency checks, hosting/credential drift rejection and bounded readiness retries. |
+| [mcp-client.test.mjs](../test/mcp-client.test.mjs) | Per-phase errors, notification/tool-call deadlines, no tool replay and no raw credential/response leakage. |
+| [report.test.mjs](../test/report.test.mjs) | Allowlisted summary fields, privacy, CLI/API counts and failed/incomplete/skipped outcomes. |
 | [promotion.test.ps1](../test/promotion.test.ps1) | Source-only extraction, target-only publication, preview before apply, separate gateway/key selection, no deletion/affix flags, target binding guard, identical-instance rejection and environment restoration. |
 | [preprovision.test.ps1](../test/preprovision.test.ps1) | Missing optional process key is allowed, environment-provided key is allowed, wrong subscription blocks npm, failing npm blocks provisioning, working directory restored. |
 | [bash.test.sh](../test/bash.test.sh) | Bash equivalents: dry-run/apply routing, credentials, metadata/path/binding guards, CLI failure propagation, preprovision validation and source verification. |
@@ -88,6 +91,8 @@ Complete this only in a dedicated lab after deployment approval:
       are Developer tier, capacity 1, with distinct hostnames.
 - [ ] Dependencies and required permissions have been reviewed.
 - [ ] App Service `/health` returns `{"status":"ok"}`.
+- [ ] Read-only preflight passes: supported paid hosting, Always On, credential
+      consistency, backend bindings and both test subscriptions.
 - [ ] Source `/poc-native/mcp` initializes, lists `get_status`, and returns text
       containing `apiops-rest-ok`.
 - [ ] Source `/poc-proxy/mcp` initializes, lists `echo`, and echoes

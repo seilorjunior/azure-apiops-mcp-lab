@@ -12,6 +12,7 @@ $global:ApiopsPromotionMock = @{
     ProxyMetadata = 'canonical'
     BadProxy = 'none'
     ExtraResource = $false
+    PreflightFail = $false
     ArmScope = '/subscriptions/00000000-0000-4000-8000-000000000001/resourceGroups/test-rg/providers/Microsoft.ApiManagement/service'
 }
 
@@ -69,7 +70,12 @@ function az {
 
 function node {
     $arguments = @($args)
-    if ($arguments[0] -like '*validate-extraction.mjs') {
+    if ($arguments[0] -like '*preflight.mjs') {
+        $global:ApiopsPromotionMock.Calls.Add(@{ kind = 'preflight' })
+        $global:LASTEXITCODE = if ($global:ApiopsPromotionMock.PreflightFail) { 8 } else { 0 }
+        return
+    }
+    if ($arguments[0] -like '*validate-extraction.mjs' -or $arguments[0] -like '*report.mjs') {
         $executable = (Get-Command node -CommandType Application | Select-Object -First 1).Source
         $input | & $executable @arguments
         $global:LASTEXITCODE = $LASTEXITCODE
@@ -132,9 +138,21 @@ try {
     $env:POC_APIM_KEY = 'test-previous-key'
     $promote = Join-Path $mockRoot 'scripts\ps1\Promote.ps1'
     & $promote -ResourceGroup test-rg -SourceApimName src -TargetApimName dst
+    Assert-Mock ($global:ApiopsPromotionMock.Calls[0].kind -eq 'preflight') 'Preflight must run before MCP and extraction.'
     $publications = @($global:ApiopsPromotionMock.Calls | Where-Object kind -eq 'publish')
     Assert-Mock ($publications.Count -eq 1 -and $publications[0].dryRun) 'Default run must only dry-run.'
     Assert-Mock ($env:AZURE_API_VERSION -eq 'test-previous-version') 'API-version environment was not restored.'
+
+    $global:ApiopsPromotionMock.Calls.Clear()
+    $global:ApiopsPromotionMock.PreflightFail = $true
+    $rejected = $false
+    try { & $promote -ResourceGroup test-rg -SourceApimName src -TargetApimName dst } catch {
+        if ($_.Exception.Message -notmatch 'exit code 8') { throw }
+        $rejected = $true
+    }
+    Assert-Mock $rejected 'Preflight failure must propagate.'
+    Assert-Mock ($global:ApiopsPromotionMock.Calls.Count -eq 1) 'Preflight failure must block MCP and APIops.'
+    $global:ApiopsPromotionMock.PreflightFail = $false
 
     $global:ApiopsPromotionMock.Calls.Clear()
     & $promote -ResourceGroup test-rg -SourceApimName src -TargetApimName dst -Apply

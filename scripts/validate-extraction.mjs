@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
+import { record } from './report.mjs';
 
 const root = process.argv[2];
 const source = JSON.parse(readFileSync(0, 'utf8'));
@@ -26,3 +27,4 @@ assert.equal(actual?.type, expected.type, 'Extraction lost the proxy MCP API typ
 assert.equal(actual?.backendId, expected.backendId, 'Extraction changed the proxy backend binding.');
 assert.ok(isDeepStrictEqual(actual?.mcpProperties, expected.mcpProperties),
   'Extraction lost or changed external MCP configuration.');
+record({ stage: 'artifact-validation', status: 'pass', apiCount: apis.length });

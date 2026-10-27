@@ -107,3 +107,19 @@ test('workflow actions are SHA pinned and never upload extracted artifacts', () 
     }
   }
 });
+
+test('promotion uses private identifiers and always renders an allowlisted summary', () => {
+  const workflow = readWorkflow('promote');
+  const job = workflow.jobs.promote;
+  for (const name of ['AZURE_CLIENT_ID', 'AZURE_TENANT_ID', 'AZURE_SUBSCRIPTION_ID']) {
+    assert.equal(job.env[name], `\${{ secrets.${name} }}`);
+    assert.doesNotMatch(JSON.stringify(workflow), new RegExp(`vars\\.${name}`));
+  }
+  const login = job.steps.find((step) => step.id === 'login');
+  assert.equal(login.with['client-id'], '${{ secrets.AZURE_CLIENT_ID }}');
+  assert.equal(login.with['tenant-id'], '${{ secrets.AZURE_TENANT_ID }}');
+  assert.equal(login.with['subscription-id'], '${{ secrets.AZURE_SUBSCRIPTION_ID }}');
+  assert.equal(job.steps.at(-1).if, 'always()');
+  assert.match(job.steps.at(-1).run, /node scripts\/report\.mjs render/);
+  assert.equal(job.steps.find((step) => step.id === 'tests').env.APIOPS_REPORT_PATH, '');
+});

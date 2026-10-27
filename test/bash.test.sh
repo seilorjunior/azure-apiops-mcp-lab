@@ -10,6 +10,7 @@ export MOCK_POLICY_COUNT="$MOCK_DIR/policy-count"
 export MOCK_WRONG_BINDING=0 MOCK_BAD_METADATA=0 MOCK_NPM_EXIT=0 MOCK_FAIL_PUBLISH=0 MOCK_BAD_PATH=0 MOCK_CHANGED_SOURCE=0 MOCK_CHANGED_POLICY=0
 export MOCK_PROXY_METADATA=canonical MOCK_BAD_PROXY=none
 export MOCK_EXTRA_RESOURCE=0
+export MOCK_PREFLIGHT_FAIL=0
 touch "$MOCK_LOG" "$MOCK_FOLDERS"
 printf '0\n' > "$MOCK_SOURCE_COUNT"
 printf '0\n' > "$MOCK_POLICY_COUNT"
@@ -100,7 +101,10 @@ NODE
 }
 
 node() {
-    if [[ "${1:-}" == */scripts/test-mcp.mjs ]]; then
+    if [[ "${1:-}" == */scripts/preflight.mjs ]]; then
+        printf 'preflight\n' >> "$MOCK_LOG"
+        [[ "$MOCK_PREFLIGHT_FAIL" == 0 ]] || return 8
+    elif [[ "${1:-}" == */scripts/test-mcp.mjs ]]; then
         printf 'mcp|%s|%s|%s\n' "$2" "$3" "${POC_APIM_KEY:-}" >> "$MOCK_LOG"
     elif [[ "${1:-}" == */@azure-tools/apiops-cli/dist/cli/index.js ]]; then
         shift
@@ -181,9 +185,16 @@ export APIOPS_USE_GLOBAL=false
 promote=(bash "$ROOT/scripts/bash/promote.sh" --resource-group test-rg --source-apim-name src --target-apim-name dst)
 export AZURE_API_VERSION='previous-version' POC_APIM_KEY='previous-key'
 "${promote[@]}"
+[[ "$(head -n 1 "$MOCK_LOG")" == preflight ]] || fail_test 'Preflight must precede MCP and extraction.'
 grep -qx 'extract|src|false' "$MOCK_LOG" || fail_test 'Source extraction missing.'
 grep -qx 'publish|dst|true' "$MOCK_LOG" || fail_test 'Dry-run missing.'
 ! grep -qx 'publish|dst|false' "$MOCK_LOG" || fail_test 'Default run applied changes.'
+
+: > "$MOCK_LOG"
+if MOCK_PREFLIGHT_FAIL=1 "${promote[@]}" > "$MOCK_DIR/failure.log" 2>&1; then
+    fail_test 'Preflight failure must block promotion.'
+fi
+! grep -Eq '^(mcp|extract|publish)\|' "$MOCK_LOG" || fail_test 'Preflight failure must block MCP and APIops.'
 
 : > "$MOCK_LOG"
 "${promote[@]}" --apply

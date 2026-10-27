@@ -244,6 +244,7 @@ The postdeploy hook prints the promotion command. Alternatively, read azd output
 
 ```powershell
 $env:AZURE_SUBSCRIPTION_ID = azd env get-value AZURE_SUBSCRIPTION_ID
+$env:AZURE_WEBAPP_NAME = azd env get-value AZURE_WEBAPP_NAME
 $resourceGroup = azd env get-value AZURE_RESOURCE_GROUP
 $sourceApim = azd env get-value SOURCE_APIM_NAME
 $targetApim = azd env get-value TARGET_APIM_NAME
@@ -256,6 +257,7 @@ Bash equivalent:
 
 ```bash
 export AZURE_SUBSCRIPTION_ID="$(azd env get-value AZURE_SUBSCRIPTION_ID)"
+export AZURE_WEBAPP_NAME="$(azd env get-value AZURE_WEBAPP_NAME)"
 resource_group="$(azd env get-value AZURE_RESOURCE_GROUP)"
 source_apim="$(azd env get-value SOURCE_APIM_NAME)"
 target_apim="$(azd env get-value TARGET_APIM_NAME)"
@@ -278,7 +280,8 @@ temporary directory/environment changes do not leak to the calling shell.
 
 Each run uses a fresh ignored artifacts directory. The script:
 
-1. Tests both source endpoints with the official MCP client (including initialization).
+1. Runs read-only hosting, dependency, credential and bounded backend-readiness
+   checks, then tests both source endpoints with the official MCP client.
 2. Snapshots source APIs, REST operation and mock policy.
 3. Extracts exactly the three source APIs and checks MCP tool/transport metadata.
 4. Runs the publisher dry-run against the separate target APIM.
@@ -286,6 +289,19 @@ Each run uses a fresh ignored artifacts directory. The script:
    **poc-rest in the target APIM's ARM scope**, not the source instance's operation.
 6. Checks source configuration and canonical paths are unchanged and invokes both
    source and target tools with their respective gateway URLs and subscription keys.
+
+Preflight requires `AZURE_WEBAPP_NAME` as well as the configured subscription.
+The existing App Service must be on a tier supporting Always On (B1 or higher),
+with Always On enabled and `/health` configured. Both APIM backends must use its
+HTTPS `/mcp` endpoint with TLS validation and the matching secret named value.
+Target APIs need not exist before the first promotion; their pre-provisioned
+backend, named value and active test subscription must exist.
+
+Only backend readiness is retried: at most three 15-second attempts with bounded
+backoff for network/timeouts or HTTP 502/503/504. Invalid health payloads and
+authentication failures fail immediately. MCP phases retain 60-second deadlines;
+tools and publication are never automatically replayed. Preflight never upgrades
+a SKU, modifies permissions or repairs drift silently.
 
 ### Inspect the artifact contract
 
@@ -389,7 +405,7 @@ set the `Ocp-Apim-Subscription-Key` header using a secret input rather than a li
 | `AZURE_RESOURCE_GROUP` | Resource lookup and APIops commands. |
 | `SOURCE_APIM_NAME`, `TARGET_APIM_NAME` | Separate extract/publish targets. |
 | `SOURCE_GATEWAY_URL`, `TARGET_GATEWAY_URL` | MCP client endpoints. |
-| `AZURE_WEBAPP_NAME` | azd backend service resource discovery. |
+| `AZURE_WEBAPP_NAME` | Required for backend preflight and azd resource discovery. |
 | `BACKEND_URL` | Backend health check. |
 
 There are no secret outputs. Use individual `azd env get-value <name>` commands
