@@ -67,3 +67,11 @@ test('compressed bodies are not decompressed', async () => {
   });
   assert.equal(response.status, 415);
 });
+test('oversized bodies are rejected', async () => {
+  const response = await fetch(`${base}/mcp`, {
+    method: 'POST',
+    headers: { 'x-poc-backend-key': key, 'content-type': 'application/json' },
+    body: JSON.stringify({ pad: 'x'.repeat(70 * 1024) }),
+  });
+  assert.equal(response.status, 413);
+});
