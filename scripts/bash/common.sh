@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+# The status variable is assigned inside the deferred trap.
+# shellcheck disable=SC2154
 trap 'status=$?; printf "ERROR: command failed in %s:%s (exit %s)\n" "${BASH_SOURCE[0]}" "$LINENO" "$status" >&2; exit "$status"' ERR
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -16,6 +18,8 @@ az_json() {
 }
 
 json_get() {
+    # JavaScript template expressions must not be expanded by Bash.
+    # shellcheck disable=SC2016
     node --input-type=module -e '
         import { readFileSync } from "node:fs";
         const value = process.argv[1].split(".").reduce((item, key) => item?.[key],

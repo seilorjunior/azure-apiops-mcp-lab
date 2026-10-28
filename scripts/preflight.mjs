@@ -9,6 +9,7 @@ const requireCheck = (condition, message) => {
   if (!condition) throw new Error(message);
 };
 
+/** @param {string} id @param {{method?: string, version?: string, label?: string}} [options] */
 export function readAzureResource(id, { method = 'get', version = apiVersion, label } = {}) {
   requireCheck(/^\/subscriptions\/[a-f0-9-]+\/resourceGroups\/[^/?#]+\/providers\//i.test(id),
     'Preflight resource identifier is invalid.');

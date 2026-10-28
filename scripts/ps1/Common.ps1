@@ -47,6 +47,7 @@ function Get-TestKey {
 }
 
 function Test-McpEndpoints {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Tests multiple MCP endpoints as one validation step.')]
     param([string]$GatewayUrl, [string]$EnvironmentName, [string]$Key)
     $previous = $env:POC_APIM_KEY
     try {
@@ -60,6 +61,7 @@ function Test-McpEndpoints {
 }
 
 function Start-Stage {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Records report progress only; it does not start Azure resources.')]
     param([string]$Name)
     Invoke-Checked -Command node -Arguments @((Join-Path $script:Root 'scripts\report.mjs'), 'start', $Name)
 }

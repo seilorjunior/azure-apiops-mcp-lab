@@ -14,5 +14,5 @@ if (($response.Content | ConvertFrom-Json).status -ne 'ok') {
 $service = Get-ServiceUrl -ResourceGroup $env:AZURE_RESOURCE_GROUP -ApimName $env:SOURCE_APIM_NAME
 $key = Get-TestKey -ServiceUrl $service
 Test-McpEndpoints -GatewayUrl $env:SOURCE_GATEWAY_URL -EnvironmentName source -Key $key
-Write-Host 'Source MCP tests passed. Next, preview APIops promotion:'
-Write-Host ".\scripts\ps1\Promote.ps1 -ResourceGroup $env:AZURE_RESOURCE_GROUP -SourceApimName $env:SOURCE_APIM_NAME -TargetApimName $env:TARGET_APIM_NAME"
+Write-Information 'Source MCP tests passed. Next, preview APIops promotion:' -InformationAction Continue
+Write-Information ".\scripts\ps1\Promote.ps1 -ResourceGroup $env:AZURE_RESOURCE_GROUP -SourceApimName $env:SOURCE_APIM_NAME -TargetApimName $env:TARGET_APIM_NAME" -InformationAction Continue

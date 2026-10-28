@@ -32,6 +32,33 @@ jobs:
       - run: npm ci
       - run: npm test
 
+  quality:
+    name: Lint, types and coverage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:coverage
+      - name: ShellCheck
+        run: shellcheck -x -P SCRIPTDIR scripts/bash/*.sh test/bash.test.sh
+      - name: PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+          $results = 'scripts/ps1', 'test' | ForEach-Object {
+            Invoke-ScriptAnalyzer -Path $_ -Recurse -Severity Error, Warning
+          }
+          $results | Format-Table -AutoSize
+          if ($results) { exit 1 }
+
   infrastructure:
     name: Validate infrastructure
     runs-on: ubuntu-24.04
@@ -40,5 +67,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      - name: Lint Bicep
+        run: az bicep lint --file infra/main.bicep
       - name: Compile Bicep without signing in
         run: az bicep build --file infra/main.bicep --stdout > /dev/null
