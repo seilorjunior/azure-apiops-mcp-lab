@@ -97,7 +97,7 @@ test('both promotion jobs authorize only the configured dispatcher and re-run us
 });
 
 test('workflow actions are SHA pinned and never upload extracted artifacts', () => {
-  for (const name of ['ci', 'promote', 'dependency-audit']) {
+  for (const name of ['ci', 'promote', 'dependency-audit', 'release']) {
     const workflow = readWorkflow(name);
     for (const job of Object.values(workflow.jobs)) {
       for (const step of job.steps) {
@@ -106,6 +106,17 @@ test('workflow actions are SHA pinned and never upload extracted artifacts', () 
       }
     }
   }
+});
+
+test('tag releases validate before publishing and never deploy Azure resources', () => {
+  const workflow = readWorkflow('release');
+  assert.deepEqual(workflow.on, { push: { tags: ['v*.*.*'] } });
+  assert.deepEqual(workflow.permissions, { contents: 'read' });
+  assert.equal(workflow.jobs.publish.needs, 'verify');
+  assert.deepEqual(workflow.jobs.publish.permissions, { contents: 'write' });
+  assert.ok(workflow.jobs.verify.steps.some((step) => step.run === 'npm test'));
+  assert.match(workflow.jobs.publish.steps.at(-1).run, /--verify-tag/);
+  assert.doesNotMatch(JSON.stringify(workflow), /azure\/login|id-token|azd up/);
 });
 
 test('dependency risk audit is scheduled/manual, unprivileged and separate from PR checks', () => {

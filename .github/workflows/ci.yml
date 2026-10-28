@@ -28,7 +28,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '22'
+          node-version-file: .nvmrc
       - run: npm ci
       - run: npm test
 
@@ -42,7 +42,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '22'
+          node-version-file: .nvmrc
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
@@ -68,6 +68,24 @@ jobs:
         with:
           persist-credentials: false
       - name: Lint Bicep
-        run: az bicep lint --file infra/main.bicep
+        run: |
+          az bicep lint --file infra/main.bicep
+          az bicep lint --file infra/container.bicep
       - name: Compile Bicep without signing in
-        run: az bicep build --file infra/main.bicep --stdout > /dev/null
+        run: |
+          az bicep build --file infra/main.bicep --stdout > /dev/null
+          az bicep build --file infra/container.bicep --stdout > /dev/null
+
+  container:
+    name: Container smoke test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm ci
+      - run: npm run test:container

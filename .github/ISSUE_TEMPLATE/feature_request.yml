@@ -1,0 +1,24 @@
+name: Feature request
+description: Propose an improvement to the lab.
+body:
+  - type: markdown
+    attributes:
+      value: Do not include secrets, local environment files, private identifiers or APIM exports. Use SECURITY.md for vulnerabilities and SUPPORT.md for help.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: Explain what is difficult today and who would benefit.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Include expected behavior, deployment impact and cost implications.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

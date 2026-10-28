@@ -24,49 +24,25 @@ function az {
 }
 
 try {
-    $env:AZURE_SUBSCRIPTION_ID = '00000000-0000-4000-8000-000000000001'
-    $env:POC_BACKEND_KEY = $null
-    & $hook
-    if ($global:ApiopsPreprovisionMock.Calls -ne 1) {
-        throw 'An interactively resolved azd parameter must not prevent local tests.'
-    }
-    $env:POC_BACKEND_KEY = 'test-only-key-with-at-least-32-characters'
-    & $hook
-    if ($global:ApiopsPreprovisionMock.Calls -ne 2) {
-        throw 'Environment-supplied parameters must also allow local tests.'
-    }
-    $env:AZURE_SUBSCRIPTION_ID = '00000000-0000-4000-8000-000000000002'
-    $rejected = $false
-    try {
-        & $hook
-    } catch {
-        if ($_.Exception.Message -notmatch 'configured subscription') { throw }
-        $rejected = $true
-    }
-    if (-not $rejected -or $global:ApiopsPreprovisionMock.Calls -ne 2) {
-        throw 'The subscription guard must reject the request before invoking npm.'
-    }
-    $env:AZURE_SUBSCRIPTION_ID = $null
-    $rejected = $false
-    try {
-        & $hook
-    } catch {
-        if ($_.Exception.Message -notmatch 'Set AZURE_SUBSCRIPTION_ID') { throw }
-        $rejected = $true
-    }
-    if (-not $rejected) { throw 'Missing subscription must fail before tests.' }
-    $env:AZURE_SUBSCRIPTION_ID = '00000000-0000-4000-8000-000000000001'
-    $global:ApiopsPreprovisionMock.ExitCode = 1
-    $rejected = $false
-    try {
-        & $hook
-    } catch {
-        if ($_.Exception.Message -notmatch 'npm failed with exit code 1') { throw }
-        $rejected = $true
-    }
-    if (-not $rejected) { throw 'Local test failures must block provisioning.' }
-    if ((Get-Location).Path -ne $previousLocation.Path) {
-        throw 'The hook must restore its working directory after failure.'
+    $matrix = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'shell-matrix.json') | ConvertFrom-Json
+    foreach ($scenario in $matrix.preprovision) {
+        $env:AZURE_SUBSCRIPTION_ID = $scenario.subscription
+        $env:POC_BACKEND_KEY = $scenario.key
+        $global:ApiopsPreprovisionMock.Calls = 0
+        $global:ApiopsPreprovisionMock.ExitCode = $scenario.npmExit
+        $rejected = $false
+        try {
+            & $hook
+        } catch {
+            if (-not $scenario.error -or $_.Exception.Message -notmatch $scenario.error) { throw }
+            $rejected = $true
+        }
+        if ($rejected -ne [bool]$scenario.error -or $global:ApiopsPreprovisionMock.Calls -ne $scenario.npmCalls) {
+            throw "Unexpected preprovision result for $($scenario.id)."
+        }
+        if ((Get-Location).Path -ne $previousLocation.Path) {
+            throw 'The hook must restore its working directory after failure.'
+        }
     }
     Write-Information 'PASS: prompted and environment-supplied parameters, subscription guard, test failure propagation and location restoration.' -InformationAction Continue
 } finally {

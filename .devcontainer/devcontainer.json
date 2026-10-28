@@ -1,0 +1,17 @@
+{
+  "name": "Azure APIops MCP Lab",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/azure-cli:1": {
+      "installBicep": true
+    },
+    "ghcr.io/azure/azure-dev/azd:latest": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "postCreateCommand": "npm ci",
+  "forwardPorts": [8080],
+  "portsAttributes": {
+    "8080": { "label": "MCP backend", "onAutoForward": "notify" }
+  },
+  "remoteUser": "node"
+}

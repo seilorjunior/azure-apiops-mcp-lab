@@ -10,14 +10,18 @@
   },
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22",
+    "npm": ">=10"
   },
   "scripts": {
     "start": "node src/server.mjs",
-    "test": "node --test test/server.test.mjs test/filter.test.mjs test/workflow.test.mjs test/preflight.test.mjs test/report.test.mjs test/mcp-client.test.mjs test/audit-dependencies.test.mjs test/api-snapshot.test.mjs && node test/run-shell-tests.mjs",
+    "test": "node --test test/server.test.mjs test/filter.test.mjs test/workflow.test.mjs test/preflight.test.mjs test/report.test.mjs test/mcp-client.test.mjs test/audit-dependencies.test.mjs test/api-snapshot.test.mjs test/release.test.mjs && node test/run-shell-tests.mjs",
     "lint": "eslint .",
     "typecheck": "tsc -p .",
-    "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=75 --test-coverage-branches=85 --test-coverage-functions=80 test/server.test.mjs test/filter.test.mjs test/workflow.test.mjs test/preflight.test.mjs test/report.test.mjs test/mcp-client.test.mjs test/audit-dependencies.test.mjs test/api-snapshot.test.mjs",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=75 --test-coverage-branches=85 --test-coverage-functions=80 test/server.test.mjs test/filter.test.mjs test/workflow.test.mjs test/preflight.test.mjs test/report.test.mjs test/mcp-client.test.mjs test/audit-dependencies.test.mjs test/api-snapshot.test.mjs test/release.test.mjs",
+    "test:container": "node test/container-smoke.mjs",
+    "down": "azd down",
+    "down:container": "azd --cwd deploy/container down",
     "audit:dependencies": "node scripts/audit-dependencies.mjs",
     "test:mcp": "node scripts/test-mcp.mjs",
     "snapshot:apis": "node scripts/api-snapshot.mjs"

@@ -63,6 +63,18 @@ test('preflight checks both environments without writes or target API requiremen
   assert.equal(f.events.at(-1).status, 'pass');
 });
 
+test('container preflight checks managed registry pulls and the expected port', async () => {
+  const f = fixture();
+  const config = f.resources[`${appId}/config/web`].properties;
+  const settings = f.resources[`${appId}/config/appsettings/list`].properties;
+  config.linuxFxVersion = 'DOCKER|fixture.azurecr.io/backend:example';
+  await assert.rejects(runPreflight(f.options), /managed identity/);
+  config.acrUseManagedIdentityCreds = true;
+  await assert.rejects(runPreflight(f.options), /WEBSITES_PORT/);
+  settings.WEBSITES_PORT = '8080';
+  await runPreflight(f.options);
+  assert.equal(f.healthCalls, 1);
+});
 test('preflight fails before readiness when hosting or either environment drifts', async () => {
   const dst = `${group}/providers/Microsoft.ApiManagement/service/dst`;
   const src = `${group}/providers/Microsoft.ApiManagement/service/src`;
