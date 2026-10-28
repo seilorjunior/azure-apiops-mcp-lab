@@ -168,6 +168,7 @@ Vault deployment; a 32-character minimum is length validation, not proof of entr
 - HTTPS-only App Service; minimum TLS 1.2; FTP disabled.
 - APIM backend URL uses HTTPS with certificate-name and chain validation enabled.
 - JSON body size limited to 64 KB and compressed-body inflation disabled.
+- Oversized bodies are rejected with 413 (covered by `test/server.test.mjs`).
 - Echo message validated to 1-200 characters.
 - Stateless server with no session store; authenticated non-POST MCP calls get 405.
 - No application response-body logging, MCP buffering policy or tracing configuration
@@ -215,7 +216,19 @@ Production hardening would require deliberate design and verification of:
 - Secret storage/rotation and reduced trust across source/target environments.
 - Network exposure restrictions and independent environment/resource boundaries.
 - Appropriate monitoring, safe logs, alerting, rate limits and abuse controls.
+  The backend has no application-level rate limiting; the PoC relies on APIM
+  policies, which this project does not configure.
 - Audited dependency remediation and a secured CI/CD identity.
 - Artifact review/versioning, controlled approval, rollback and failure recovery.
 
 None of these are implicitly delivered by a successful PoC run.
+
+## Supply-chain controls
+
+- [CodeQL](../.github/workflows/codeql.yml) scans JavaScript and workflow files on
+  PRs, `main` and weekly.
+- [Supply chain workflow](../.github/workflows/supply-chain.yml) runs
+  `npm audit signatures` and publishes a CycloneDX SBOM artifact.
+- Third-party actions are pinned to commit SHAs; Dependabot proposes updates.
+- Enable GitHub secret scanning and push protection in repository settings
+  (Settings > Code security); these are not configurable from files.
