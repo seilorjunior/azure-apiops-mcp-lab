@@ -1,6 +1,248 @@
-# GitHub Actions API promotion
+# GitHub Actions workflows
 
 [Project overview](../README.md) | [Operations](operations.md) | [Testing and security](testing-and-security.md)
+
+The **Actions > Workflows** sidebar includes both workflows stored in this
+repository and workflows managed by GitHub. They have different purposes:
+testing code, reviewing changes, maintaining dependencies, publishing releases
+and explicitly promoting APIs. A green run in one does not prove that the others
+passed or that the Azure lab works.
+
+## Workflow overview
+
+| Sidebar name | Definition or owner | When it runs | Purpose |
+| --- | --- | --- | --- |
+| [CI](#ci) | [ci.yml](../.github/workflows/ci.yml) | Push to `main`, any pull request, or manual dispatch. | Test application/scripts, enforce quality, validate Bicep and smoke-test the container. |
+| [CodeQL](#codeql) | [codeql.yml](../.github/workflows/codeql.yml) | Push to `main`, any pull request, and Mondays at 04:17 UTC. | Static security analysis of JavaScript/TypeScript and Actions workflows. |
+| [Copilot](#copilot) | GitHub-managed code review. | A manual review request or an automatic review rule. | Gather review context and provide feedback on proposed changes. |
+| [Copilot cloud agent](#copilot-cloud-agent) | GitHub-managed coding agent. | A task is delegated to the agent, or an existing task is continued. | Investigate or implement a requested change in a cloud environment. |
+| [Dependabot Updates](#dependabot-updates) | GitHub-managed; configured by [dependabot.yml](../.github/dependabot.yml). | Weekly version-update checks; checks can also be requested from Dependabot's UI. | Propose npm dependency and GitHub Actions updates. |
+| [Dependency risk audit](#dependency-risk-audit) | [dependency-audit.yml](../.github/workflows/dependency-audit.yml) | Mondays at 09:23 UTC or manual dispatch. | Evaluate known dependency advisories and time-limited exceptions. |
+| [Promote APIM APIs](#promote-apim-apis) | [promote.yml](../.github/workflows/promote.yml) | Manual dispatch only, with environment approval. | Preview or apply API configuration promotion to an existing Azure lab. |
+| [Release](#release) | [release.yml](../.github/workflows/release.yml) | Push of a tag matching `v*.*.*`. | Verify the tagged code and publish versioned changelog notes as a GitHub release. |
+| [Supply chain](#supply-chain) | [supply-chain.yml](../.github/workflows/supply-chain.yml) | Push to `main`, selected dependency/workflow PR changes, or manual dispatch. | Verify npm signatures/provenance and upload a production dependency inventory. |
+
+Scheduled runs use the default branch and can be delayed by GitHub. Fork owners
+must enable Actions and scheduled workflows in their own repository. The YAML
+push filters explicitly name `main`; changing the default branch does not update
+those filters automatically.
+
+The three GitHub-managed entries do **not** have matching files under
+`.github/workflows`. GitHub currently identifies them with the paths
+`dynamic/agents/copilot-pull-request-reviewer`,
+`dynamic/copilot-swe-agent/copilot` and
+`dynamic/dependabot/dependabot-updates`, respectively. These are service-managed
+identifiers, not files to create or edit. Their availability and behavior depend
+on GitHub settings and access; copying this repository does not copy those
+settings. The sidebar pin icons only organize your workflow shortcuts; pinning
+does not enable, trigger or protect a workflow.
+
+## CI
+
+**Trigger:** push to `main`, any pull request, or **Run workflow**.
+The [definition](../.github/workflows/ci.yml) runs four independent job types:
+
+| Job | What it checks |
+| --- | --- |
+| `Test (ubuntu-24.04)` and `Test (windows-2025)` | Restore the lockfile with `npm ci`, then run `npm test`. The shared Node tests run on both platforms; shell regressions select Bash on Linux and PowerShell on Windows. The matrix does not stop the other platform on failure. |
+| `Lint, types and coverage` | ESLint, TypeScript checks, Node coverage thresholds, ShellCheck and PSScriptAnalyzer. Coverage requires at least 75% lines, 85% branches and 80% functions for the selected Node test suites; shell tests are not included in those coverage figures. |
+| `Validate infrastructure` | Lint and compile both `infra/main.bicep` and `infra/container.bicep`, without signing in to Azure. Compilation does not prove a live deployment will succeed. |
+| `Container smoke test` | Build and run the Docker image locally on the runner; verify non-root execution, health, unauthenticated MCP rejection, authenticated `echo`, sanitized JSON logs and graceful shutdown. It does not publish an image. |
+
+CI uses the Node version in `.nvmrc`, read-only repository permissions and no
+Azure credentials. Its application/script tests use mocks or local services, not
+the APIM gateways. Dependency installation and tool setup still require network
+access; "offline tests" means no live Azure or advisory-registry acceptance gate,
+not an air-gapped workflow.
+
+New runs cancel older in-progress CI runs for the same Git ref. Read the failed
+job's logs to identify whether the problem is platform-specific, code quality,
+Bicep or Docker. The three checks recommended for branch protection are documented
+under [PR protection setup](#configure-pull-request-protection-and-copilot);
+creating workflow files alone does not make every job a required merge check.
+
+## CodeQL
+
+**Trigger:** push to `main`, any pull request, or the weekly Monday schedule.
+There is no `workflow_dispatch`, so this definition does not provide a
+**Run workflow** button.
+
+The [analysis job](../.github/workflows/codeql.yml) scans
+`javascript-typescript` and `actions` using CodeQL with `build-mode: none`.
+It does not run the backend, perform MCP acceptance tests or audit npm dependency
+versions. It has `contents: read` and job-scoped `security-events: write` to
+publish code-scanning results, not Azure access.
+
+Review findings in **Security > Code scanning** and the PR's scanning results.
+A completed analysis can still report vulnerabilities: workflow success means
+analysis completed, not necessarily zero alerts. Alert-based merge blocking
+requires the corresponding repository protection settings. Investigate job
+failures in the analysis logs rather than treating missing results as a clean
+scan. Code scanning availability depends on repository visibility and GitHub
+security features.
+
+## Copilot
+
+This is the GitHub-managed **Copilot code review** entry, not the cloud coding
+agent and not a test suite. Its Actions work supports agentic review capabilities,
+such as gathering repository context. The useful output is review feedback on
+the PR; workflow logs help diagnose context-gathering failures.
+
+In the upstream repository, the configured ruleset automatically requests review
+for new PRs targeting any branch, including drafts. New pushes do not automatically
+request another review. Request a follow-up from the PR's **Reviewers** menu when
+needed. See [the review ruleset setup](#configure-pull-request-protection-and-copilot)
+for the exact settings to recreate in a fork.
+
+Review suggestions before applying them. Copilot feedback does not count as a
+required human approval, does not replace CI and does not authorize an Azure job.
+A successful context-gathering run does not establish that the reviewed code is
+correct. GitHub may still provide a more limited review if its agentic Actions
+work is unavailable. Access, policies and usage charges are controlled by GitHub
+Copilot settings; see [GitHub's code review guide](https://docs.github.com/en/copilot/concepts/agents/code-review).
+
+## Copilot cloud agent
+
+This GitHub-managed entry represents delegated coding work. Depending on the
+request, the agent can investigate the repository, edit files, run commands and
+propose changes through a branch and PR. It is not automatically started by this
+repository's CI, release or promotion YAML.
+
+Start or continue work through GitHub's Copilot task/session controls, such as
+delegating an issue or requesting changes on an agent PR. Inspect the agent session
+and associated Actions logs for the actual commands and results. A completed
+agent run is not proof that every test ran or that its changes are safe; review
+the diff, CI results and any stated limitations before merging.
+
+There is no agent-specific Azure deployment configuration supplied here. Do not
+provide promotion credentials to an agent merely to fix offline tests, and do
+not use an agent session as a substitute for the protected promotion workflow.
+Enabling Copilot in a fork is a separate repository/account setting, not a result
+of copying the source. See [GitHub's cloud agent overview](https://docs.github.com/en/copilot/concepts/agents/cloud-agent/about-cloud-agent)
+for capabilities, access and session controls.
+
+## Dependabot Updates
+
+This is GitHub's dependency-update service, configured through
+[.github/dependabot.yml](../.github/dependabot.yml), not an editable Actions
+workflow. Two entries check weekly: npm manifests/lockfiles in the repository
+root, and action references in `.github/workflows`. Each ecosystem allows up to
+five open version-update PRs. No explicit weekday or time is configured here.
+
+Its output is proposed updates, not an audit report or an automatic merge.
+Review the changed versions, lockfile and action pins, then let the applicable PR
+checks run. A successful update check can produce no PR when nothing eligible is
+available. Inspect Dependabot update logs for registry, resolution or access
+failures.
+
+Use the repository's **Insights > Dependency graph > Dependabot** area to inspect
+checks and request another update check. Dependabot alerts and automatic
+**security updates** are separate repository settings; the weekly version-update
+configuration is not proof that either is enabled. This file configures neither
+Docker image updates nor private-registry credentials, and grants no Azure access.
+See [GitHub's Dependabot configuration reference](https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference).
+
+## Dependency risk audit
+
+**Trigger:** Mondays at 09:23 UTC or **Run workflow**.
+The [workflow](../.github/workflows/dependency-audit.yml) installs the locked tree
+with `npm ci --ignore-scripts --no-audit`, then runs
+`npm run audit:dependencies` against both the production and full dependency trees.
+It uses read-only repository permissions and no Azure identity.
+
+The job summary shows findings, production/development scope and exception expiry.
+Unaccepted high/critical advisories and expired exceptions fail the gate; registry,
+process, setup or policy errors fail rather than report a clean result. A passing
+run can still contain lower-severity or explicitly accepted risks. See the
+[risk register](dependency-risks.md#automated-tracking) for exit codes and the
+reviewed, time-limited exception process.
+
+This workflow neither updates packages nor opens issues, uploads raw reports,
+merges Dependabot PRs or automatically changes the promotion opt-in. It is separate
+from ordinary PR CI and is not a dependency of the promotion job. Maintainers
+must inspect its current results before Azure execution. Its shared concurrency
+group does not cancel an active audit.
+
+## Release
+
+**Trigger:** pushing a tag matching `v*.*.*`; there is no manual-dispatch input.
+The [workflow](../.github/workflows/release.yml) first runs a read-only `verify`
+job. The [release-notes script](../scripts/release-notes.mjs) requires a stable
+`vMAJOR.MINOR.PATCH` tag that exactly matches `package.json` and a nonempty
+versioned entry in `CHANGELOG.md`. The trigger's glob alone does not validate
+SemVer.
+
+Verification then runs `npm ci`, `npm test`, lint and type checks, and builds the
+Docker image. Only after that succeeds does `publish` receive `contents: write`
+and create a GitHub release using the matching changelog section. There is no npm
+package publication, image push, attached build artifact or Azure deployment.
+
+Prepare the version and changelog in a reviewed change, merge it, then create and
+push the matching tag at the intended commit. The workflow does not itself enforce
+that the tag points to `main` or wait for CI, CodeQL or the dependency audit; use
+reviewed repository/tag protections and inspect those results before tagging.
+Verification is also narrower than full CI: it does not repeat the Windows matrix,
+coverage gate, Bicep checks or running-container smoke test.
+
+Inspect `verify` failures before expecting a release. If publishing fails, inspect
+its logs and whether a release already exists before rerunning; creation is not an
+update operation. Runs for the same tag share a concurrency group without
+automatically cancelling an active run.
+
+## Supply chain
+
+**Trigger:** every push to `main`, manual dispatch, or a PR changing
+`package.json`, `package-lock.json` or `.github/workflows/supply-chain.yml`.
+Other PR changes do not trigger this workflow.
+
+The [job](../.github/workflows/supply-chain.yml) restores dependencies, runs
+`npm audit signatures` to check registry signatures and available provenance,
+then generates `sbom.cdx.json` with
+`npm sbom --sbom-format cyclonedx --omit dev`. It uploads that file as the
+**`sbom-cyclonedx`** Actions artifact with a requested retention of **90 days**,
+subject to repository/organization retention limits.
+
+An SBOM (software bill of materials) inventories production dependencies;
+development-only tooling such as APIops is excluded. Download it from the
+successful run's **Artifacts** area. It is not an APIM export, a release asset,
+an image scan or a newly issued build attestation. Signature/provenance checks
+do not prove vulnerability-free packages and do not replace the advisory audit.
+If installation, verification or generation fails, inspect that step's error;
+the later artifact upload may not have run.
+
+The job has read-only repository permissions, uses no Azure credentials and
+does not publish packages or deploy anything.
+
+## Running workflows and reading results
+
+Open **Actions**, select a workflow, then select a run to inspect its event, ref,
+commit, jobs and failed steps. Where present, read the job summary as well as logs;
+for Supply chain, also inspect its uploaded artifact. Skipped, cancelled or absent
+runs are not successful validation.
+
+Only CI, Dependency risk audit, Promote APIM APIs and Supply chain currently
+declare manual dispatch. For example:
+
+```bash
+gh workflow run ci.yml --ref main
+gh workflow run dependency-audit.yml --ref main
+gh workflow run supply-chain.yml --ref main
+gh run list --workflow ci.yml --limit 5
+gh run watch RUN_ID --exit-status
+```
+
+Replace `RUN_ID` with the selected run. Manual dispatch requires appropriate
+repository access and the workflow to exist on the default branch. For the
+GitHub-managed entries, use the relevant review, agent or Dependabot controls
+instead of trying to dispatch a nonexistent YAML file.
+
+These workflows are not one chained deployment pipeline. Within Release,
+`publish` depends on `verify`; within promotion, the Azure job depends on
+authorization and environment approval. The other workflows run independently.
+Only **Promote APIM APIs** is configured to authenticate to Azure, and even it
+does not provision the lab. Its setup and operating procedure follow.
+
+## Promote APIM APIs
 
 The [Promote APIM APIs workflow](../.github/workflows/promote.yml) runs the existing
 [Bash promotion script](../scripts/bash/promote.sh) on an Ubuntu runner with
