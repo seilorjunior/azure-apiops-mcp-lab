@@ -1,4 +1,7 @@
 #Requires -Version 7.2
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidGlobalVars', '', Justification = 'Mocks share state and native exit codes with scripts invoked in child scopes.')]
+param()
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $mockRoot = Split-Path $PSScriptRoot -Parent
@@ -69,6 +72,9 @@ function az {
 }
 
 function node {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets', '', Justification = 'Mocks the node executable to test promotion without live endpoints.')]
+    param()
+
     $arguments = @($args)
     if ($arguments[0] -like '*preflight.mjs') {
         $global:ApiopsPromotionMock.Calls.Add(@{ kind = 'preflight' })
@@ -86,6 +92,9 @@ function node {
 }
 
 function Invoke-MockApiops {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Matches the APIops CLI product name.')]
+    param()
+
     $arguments = @($args)
     Assert-Mock ($env:AZURE_API_VERSION -eq '2025-09-01-preview') 'API version was not set.'
     Assert-Mock ($arguments -contains '--no-transitive') 'Transitive dependencies must stay disabled.'
@@ -226,7 +235,7 @@ try {
         $rejected = $true
     }
     Assert-Mock $rejected 'Identical source/target instances must be rejected.'
-    Write-Host 'PASS: offline promotion wiring, dry-run/apply, distinct gateways/keys, scope guard and environment restoration.'
+    Write-Information 'PASS: offline promotion wiring, dry-run/apply, distinct gateways/keys, scope guard and environment restoration.' -InformationAction Continue
 } finally {
     Remove-Item -LiteralPath "Alias:$mockCli"
     $env:AZURE_API_VERSION = $previousVersion

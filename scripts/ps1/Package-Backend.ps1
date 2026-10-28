@@ -8,4 +8,4 @@ $null = New-Item -ItemType Directory -Path $stage -Force
 foreach ($name in @('package.json', 'package-lock.json', 'src')) {
     Copy-Item -LiteralPath (Join-Path $script:Root $name) -Destination $stage -Recurse
 }
-Write-Host 'Staged backend application only; no Azure state, APIops artifacts or credentials included.'
+Write-Information 'Staged backend application only; no Azure state, APIops artifacts or credentials included.' -InformationAction Continue

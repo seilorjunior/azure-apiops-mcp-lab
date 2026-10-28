@@ -9,10 +9,15 @@
     "url": "https://github.com/seilorjunior/azure-apiops-mcp-lab.git"
   },
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "node src/server.mjs",
     "test": "node --test test/server.test.mjs test/filter.test.mjs test/workflow.test.mjs test/preflight.test.mjs test/report.test.mjs test/mcp-client.test.mjs test/audit-dependencies.test.mjs test/api-snapshot.test.mjs && node test/run-shell-tests.mjs",
+    "lint": "eslint .",
+    "typecheck": "tsc -p .",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=75 --test-coverage-branches=85 --test-coverage-functions=80 test/server.test.mjs test/filter.test.mjs test/workflow.test.mjs test/preflight.test.mjs test/report.test.mjs test/mcp-client.test.mjs test/audit-dependencies.test.mjs test/api-snapshot.test.mjs",
     "audit:dependencies": "node scripts/audit-dependencies.mjs",
     "test:mcp": "node scripts/test-mcp.mjs",
     "snapshot:apis": "node scripts/api-snapshot.mjs"
@@ -23,7 +28,13 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "@azure-tools/apiops-cli": "1.0.5"
+    "@azure-tools/apiops-cli": "1.0.5",
+    "@eslint/js": "9.39.5",
+    "@types/express": "5.0.6",
+    "@types/node": "26.6.5",
+    "eslint": "9.39.5",
+    "globals": "17.13.0",
+    "typescript": "7.0.2"
   },
   "overrides": {
     "@azure-tools/apiops-cli": {
