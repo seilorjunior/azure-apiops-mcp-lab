@@ -21,10 +21,15 @@ initialization, tool discovery and tool call against **both** gateways, not mere
 a successful deployment command.
 
 > **Before use:** this lab creates **two billed Developer APIM instances** and a
-> billed App Service plan. There are [known dependency advisories](docs/dependency-risks.md).
+> billed App Service plan (plus a billed Basic ACR in container mode). There are [known dependency advisories](docs/dependency-risks.md).
 > Azure promotion is **disabled by default** and requires explicit opt-in and
 > protected environments. Review [validation scope](docs/validation.md); successful
 > sample runs do not certify another subscription or production deployment.
+>
+> **Stop billing:** after verifying the selected environment and dedicated resource
+> group, run **`azd down`**. For the container project, use
+> **`azd --cwd deploy/container down`**. Optional monthly
+> [budget alerts](docs/operations.md#cleanup-and-cost-control) notify; they do not cap spending.
 
 Dependency risks are tracked by a separate weekly/manual
 [audit workflow](.github/workflows/dependency-audit.yml). It fails on unaccepted
@@ -45,6 +50,7 @@ See the [audit policy and exception process](docs/dependency-risks.md#automated-
 | [Validation scope](docs/validation.md) | What offline and live checks prove, and remaining gates. |
 | [Dependency risk register](docs/dependency-risks.md) | Known advisories, upstream blockers and opt-in policy. |
 | [Contributing](CONTRIBUTING.md) / [Security policy](SECURITY.md) | Local CI, contribution review and private vulnerability reporting. |
+| [Support](SUPPORT.md) / [Changelog](CHANGELOG.md) | Community help, feature requests and version history. |
 
 ## Architecture at a glance
 
@@ -90,18 +96,20 @@ for both paths.
 | APIM Developer, capacity 1 | 2 | Dedicated source and target API configuration. |
 | Linux App Service Basic B1 plan | 1 | Hosts the shared external MCP server. |
 | Node.js App Service application | 1 | Stateless Streamable HTTP MCP `echo` tool and health endpoint. |
+| Basic Azure Container Registry (optional) | 1 in container mode only | Stores the backend Docker image; App Service pulls using managed identity. |
 | APIM backend, secret named value and test subscription | One set per APIM | Pre-provisioned dependencies for API-only promotion. |
 | Source API seed definitions | 3 APIs | `poc-rest`, `poc-native`, `poc-proxy`; target APIs are created only by APIops. |
 
-No LLM, Azure OpenAI deployment, database, container registry or AI subscription
+No LLM, Azure OpenAI deployment, database or AI subscription
 is needed to run the automated MCP checks. An MCP client can call the tools directly.
+The default code deployment does not require Docker or a container registry.
 Developer-tier APIM has no production SLA. Both APIM instances and the App Service
 plan incur charges while provisioned, even when there is no test traffic.
 
 ## Start here
 
 Use PowerShell 7.2 or later on Windows, or Bash on Linux/macOS. Install Node.js 22
-or later, npm, Azure CLI with Bicep, and Azure Developer CLI. Bash source verification
+or later, npm 10 or later, Azure CLI with Bicep, and Azure Developer CLI. Bash source verification
 also requires `curl`; JSON processing uses Node, so `jq` is not required.
 
 From the repository root:
@@ -111,6 +119,10 @@ npm ci
 npm test
 az bicep build --file .\infra\main.bicep --stdout
 ```
+
+`.nvmrc` pins the contributor baseline to Node 22; run `nvm use` where available.
+Alternatively, reopen this repository in its [devcontainer](.devcontainer/devcontainer.json),
+which includes Node, Azure CLI/Bicep, azd and Docker. It does not sign in or deploy.
 
 These tests do not deploy resources. Script tests mock Azure and APIops.
 `npm test` selects the PowerShell regression suites on Windows and the Bash suite
@@ -164,13 +176,38 @@ and the [contribution guide](CONTRIBUTING.md#changes-and-review).
 
 Execute `.sh` scripts with `bash`; do not source entry-point scripts into your
 interactive shell. Shared JavaScript MCP clients remain directly under `scripts`.
+Both shell suites consume [the same scenario matrix](test/shell-matrix.json) for
+subscription/test guards and accepted/rejected proxy metadata.
+
+### Docker and containerized App Service
+
+The default deployment remains Node.js on App Service. A separate
+[container project](deploy/container/azure.yaml) uses the same APIM infrastructure
+and application, with a Basic ACR and managed-identity image pulls. It requires
+Docker and azd 1.27 or later. Follow the
+[container deployment runbook](docs/operations.md#containerized-app-service-option)
+to initialize a **separate, dedicated environment**; it is not an in-place migration.
+
+For a local Docker run, first set a strong `POC_BACKEND_KEY` in your process
+environment, then run:
+
+```text
+docker build -t apiops-mcp-backend .
+docker run --rm -p 127.0.0.1:8080:8080 --env POC_BACKEND_KEY apiops-mcp-backend
+```
+
+`GET http://localhost:8080/health` returns `{"status":"ok"}` without authentication;
+`/mcp` still requires the backend key. The image runs as a non-root user and emits
+JSON logs without request bodies, query strings or credentials.
 
 Promotion and postdeploy verification first run a read-only
 [preflight](scripts/preflight.mjs): supported hosting tier, Always On, backend
 health, both APIM dependencies and private credential consistency. They fail on
 drift rather than changing the hosting tier or permissions automatically.
-MCP failures identify the protocol phase and elapsed time. GitHub runs produce a
-sanitized summary on success or failure; raw exports are never uploaded.
+MCP failures identify the protocol phase and elapsed time. Initialization/discovery
+receive bounded transient retries; tool calls are never automatically replayed.
+GitHub runs produce a sanitized summary on success or failure; raw exports are
+never uploaded.
 
 **First deployment:** follow [the azd runbook](docs/operations.md#deploy-with-azd-only-after-explicit-approval)
 to configure authentication, the repository's subscription guard and an environment,

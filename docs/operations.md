@@ -16,6 +16,8 @@ of a successful live deployment.
 | Review infrastructure changes | `azd provision --preview` | Preview only; inspect output before proceeding. |
 | Provision infrastructure and deploy application | `azd up` | Creates or updates billed resources and source API configuration. |
 | Deploy backend code only | `azd deploy backend` | Updates App Service application and runs postdeploy verification. |
+| Deploy the container option | `azd --cwd deploy/container up` | Separate environment; adds billed Basic ACR and deploys a Docker image to App Service. |
+| Tear down the selected environment | `azd down` | Destructively removes the environment's Azure resources after confirmation. |
 | Preview API promotion | `Promote.ps1` without `-Apply` | Reads source and target; publisher runs dry-run only. |
 | Apply API promotion | `Promote.ps1 -Apply` | Creates or updates target API configuration. |
 | Run promotion in GitHub Actions | [Manual promotion workflow](github-actions.md) | Dry-run by default; explicit apply uses a separately protected environment. |
@@ -50,7 +52,8 @@ in the selected `AZURE_LOCATION`. East US 2 is an example, not a required region
 Brazil South was selected in a reported user run, but regional capacity is not
 established by that selection. All resources incur charges while provisioned, even when idle; APIM Developer has
 no production SLA. APIM provisioning can take tens of minutes. No OpenAI deployment,
-model usage, database, or container registry is needed.
+model usage or database is needed. A container registry is needed only for the
+optional container deployment.
 
 Source and target API names and paths are identical; separate gateway hostnames
 provide isolation. The script requires distinct source and target instance names,
@@ -66,7 +69,7 @@ production/shared services. Two APIM instances cost more than the previous singl
 
 ## Prerequisites
 
-- Node.js 22 or later, npm, Azure CLI with Bicep, and Azure Developer CLI (`azd`).
+- Node.js 22 or later, npm 10 or later, Azure CLI with Bicep, and Azure Developer CLI (`azd`).
 - Windows: PowerShell 7.2 or later. Linux/macOS: Bash and `curl`; no PowerShell or
   `jq` installation is required for the Bash path.
 - Azure login with permission to create a dedicated resource group, APIM and App
@@ -166,6 +169,50 @@ If Brazil South is the intended region, set `AZURE_LOCATION` to `brazilsouth`
 Do not change the region of an existing deployment casually: a resource group's
 location and resource locations are not a supported automatic migration plan.
 Do not dump `azd env get-values` or local `.env` contents into tickets or chat.
+
+### Containerized App Service option
+
+The default root project deploys code through Oryx. The alternative
+[`deploy/container/azure.yaml`](../deploy/container/azure.yaml) builds the
+repository's Dockerfile locally, pushes the image to a **Basic ACR**, and deploys
+it to a Linux B1 Web App for Containers. Both projects reuse the APIM modules,
+backend credential checks, source verification and promotion scripts.
+
+Use azd **1.27.0 or later**, a running Docker daemon, and the same prerequisites
+and deployment approval as the code path. The provisioning identity also needs
+permission to create role assignments; the deploying identity needs ACR push
+access (for example `AcrPush`). Registry admin credentials are disabled.
+The Web App's system-assigned identity receives `AcrPull`; no registry password
+is stored in the application or image.
+
+Initialize a **new, dedicated environment** with a different name from any
+existing root-project environment. From the repository root, after signing in
+and setting/checking your intended subscription as above:
+
+```text
+azd --cwd deploy/container env new apiops-mcp-container
+azd --cwd deploy/container env set AZURE_SUBSCRIPTION_ID <your-subscription-uuid>
+azd --cwd deploy/container env set AZURE_LOCATION eastus2
+azd --cwd deploy/container env set APIM_PUBLISHER_EMAIL <your-publisher-email>
+azd --cwd deploy/container provision --preview
+# After explicit approval:
+azd --cwd deploy/container up
+```
+
+Reuse the same secure backend credential on subsequent runs. For container-only
+updates, run `azd --cwd deploy/container deploy backend`. For any environment
+command, preview or teardown, **retain `--cwd deploy/container`** so azd reads the
+correct project's local state. Do not mix the two manifests for one environment:
+changing between Node and Docker hosting requires a separately reviewed migration.
+The initial image reference is a bootstrap placeholder until azd pushes and
+deploys the first image; provisioning alone does not make the backend healthy.
+
+`WEBSITES_PORT=8080`, the image's `PORT=8080`, and App Service's `/health` probe
+are aligned. The image runs as `node`, installs only production dependencies,
+and excludes local state and artifacts from its build context.
+To exercise the image offline, run `npm run test:container`; this builds an
+ephemeral image, checks Docker health, authenticates an MCP call, checks JSON
+logs and graceful shutdown, then removes its own container and image.
 
 Use a **new, dedicated environment name**. Bicep creates `rg-<environment-name>`;
 unlike the former deployment script, azd supports repeat deployments into that group.
@@ -414,16 +461,58 @@ through `APIM_PUBLISHER_EMAIL`; it maps to the required `publisherEmail` paramet
 
 ## Cleanup and cost control
 
-There is no automatic deletion. After finishing, confirm the resource group contains
-only this PoC, then deliberately delete it in Azure Portal or with Azure CLI.
-Deleting API artifacts or stopping the Node process does not stop APIM/App Service billing.
-Local generated artifacts and ZIP packages are excluded from Git.
+**Two Developer APIM instances and one B1 plan are billed even when idle.**
+Container mode adds Basic ACR charges (including stored images); builds, data
+transfer and other Azure usage can add charges. Prices depend on region,
+currency and agreement: estimate both APIM instances, B1 and optional ACR in
+the Azure Pricing Calculator before provisioning. Scaling to zero is not part
+of either deployment option.
 
-Before deleting anything, check the selected azd environment, subscription, group,
-and its resource inventory. `azd down` is a **destructive alternative** for removing
-the environment's Azure resources; do not run it until a human has verified the
-scope. Local environment deletion alone does not delete Azure resources or end billing.
-No cleanup command is executed automatically by this project.
+### One-command teardown
+
+First check the selected environment, subscription, resource group and inventory.
+Confirm the group contains **only this lab**. Then remove the selected
+environment's Azure resources with one command:
+
+```text
+azd down
+```
+
+For the container project use `azd --cwd deploy/container down` instead.
+Equivalent npm shortcuts are `npm run down` and `npm run down:container`.
+Keep azd's confirmation prompts; do not use an unattended forced purge.
+Verify that deletion completed in Azure before assuming billing has stopped.
+Deleting local state, API artifacts or containers, stopping the application,
+or a failed deployment does **not** remove billed Azure resources.
+No cleanup command runs automatically.
+
+### Optional monthly budget alerts
+
+[`infra/budget.bicep`](../infra/budget.bicep) creates a resource-group-scoped
+monthly cost budget when `budgetAmount` is positive. It emails at **80% and 100%
+actual spend**, and **100% forecast spend**. Budgets are **notifications, not
+spending caps**; cost data and delivery can be delayed. No resources are stopped
+or deleted by an alert.
+
+Choose an amount in the subscription's billing currency and set these non-secret
+infrastructure parameters in the selected environment's ignored local config.
+Use your own recipient privately; do not commit personal addresses:
+
+```text
+azd env config set infra.parameters.budgetAmount 100
+azd env config set infra.parameters.budgetContactEmails '["alerts@example.com"]'
+azd env config set infra.parameters.budgetStartDate <YYYY-MM-01>
+azd provision --preview
+```
+
+Replace the date with the **first day of the current UTC month** before first
+creation, and preserve that exact start date on later deployments. In container
+mode, add `--cwd deploy/container` to every azd command above. `budgetAmount`
+defaults to `0` (no budget); an enabled budget requires at least one recipient
+and a start date. Provisioning needs permission to write Consumption budgets;
+check that your subscription's offer supports budgets and confirm notification
+recipients in Azure after provisioning. Alerts cover this resource group, not
+unrelated subscription spending.
 
 ## References
 

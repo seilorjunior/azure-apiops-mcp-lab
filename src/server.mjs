@@ -1,17 +1,37 @@
-import { timingSafeEqual } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import express from 'express';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
 import { pathToFileURL } from 'node:url';
 
-export function createApp(backendKey) {
+export function writeLog(level, event, fields = {}) {
+  const line = JSON.stringify({ timestamp: new Date().toISOString(), level, event, ...fields });
+  if (level === 'error') console.error(line);
+  else console.log(line);
+}
+
+export function createApp(backendKey, { log = writeLog } = {}) {
   if (typeof backendKey !== 'string' || backendKey.length < 32) {
     throw new Error('POC_BACKEND_KEY must contain at least 32 characters.');
   }
   const expected = Buffer.from(backendKey);
   const app = express();
   app.disable('x-powered-by');
+  app.use((req, res, next) => {
+    const requestId = randomUUID();
+    res.locals.requestId = requestId;
+    res.set('x-request-id', requestId);
+    const started = performance.now();
+    res.on('finish', () => log('info', 'http_request', {
+      requestId,
+      method: req.method,
+      route: ['/health', '/mcp'].includes(req.path) ? req.path : 'other',
+      status: res.statusCode,
+      elapsedMs: Math.round(performance.now() - started),
+    }));
+    next();
+  });
   app.get('/health', (_req, res) => res.json({ status: 'ok' }));
   app.use('/mcp', (req, res, next) => {
     const actual = Buffer.from(req.get('x-poc-backend-key') ?? '');
@@ -35,7 +55,7 @@ export function createApp(backendKey) {
       enableJsonResponse: true,
     });
     res.on('close', () => {
-      server.close().catch((error) => console.error('MCP cleanup failed:', error));
+      server.close().catch(() => log('error', 'mcp_cleanup_failed', { requestId: res.locals.requestId }));
     });
     try {
       await server.connect(transport);
@@ -48,10 +68,10 @@ export function createApp(backendKey) {
     res.set('Allow', 'POST').status(405).json({ error: 'Stateless MCP accepts POST only.' });
   });
   app.use((error, _req, res, _next) => {
-    console.error('MCP request failed:', error);
+    const status = Number.isInteger(error.status) && error.status >= 400 && error.status < 500
+      ? error.status : 500;
+    log('error', 'mcp_request_failed', { requestId: res.locals.requestId, status });
     if (!res.headersSent) {
-      const status = Number.isInteger(error.status) && error.status >= 400 && error.status < 500
-        ? error.status : 500;
       res.status(status).json({ error: 'MCP request failed.' });
     }
   });
@@ -63,7 +83,22 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error('PORT must be an integer between 1 and 65535.');
   }
-  createApp(process.env.POC_BACKEND_KEY).listen(port, '0.0.0.0', () => {
-    console.log(`MCP backend listening on port ${port}`);
+  const server = createApp(process.env.POC_BACKEND_KEY).listen(port, '0.0.0.0', () => {
+    writeLog('info', 'server_started', { port });
   });
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.once(signal, () => {
+      writeLog('info', 'server_stopping', { signal });
+      const timer = setTimeout(() => {
+        writeLog('error', 'server_shutdown_timeout');
+        process.exit(1);
+      }, 10_000);
+      timer.unref();
+      server.close((error) => {
+        clearTimeout(timer);
+        if (error) writeLog('error', 'server_shutdown_failed');
+        process.exitCode = error ? 1 : 0;
+      });
+    });
+  }
 }

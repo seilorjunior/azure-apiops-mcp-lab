@@ -221,21 +221,28 @@ for scenario in MOCK_WRONG_BINDING MOCK_BAD_METADATA MOCK_FAIL_PUBLISH MOCK_BAD_
     export "$scenario=0"
 done
 
-MOCK_PROXY_METADATA=legacy "${promote[@]}"
 : > "$MOCK_LOG"
 if MOCK_EXTRA_RESOURCE=1 "${promote[@]}" --apply > "$MOCK_DIR/failure.log" 2>&1; then
     fail_test 'Non-API artifacts must fail scope validation.'
 fi
 grep -q 'outside the API-only promotion scope' "$MOCK_DIR/failure.log"
 ! grep -q '^publish|' "$MOCK_LOG" || fail_test 'Non-API artifacts must block all publisher calls.'
-for scenario in missing changed backend type; do
+proxy_cases="$(command node --input-type=module -e '
+    import { readFileSync } from "node:fs";
+    for (const s of JSON.parse(readFileSync(process.argv[1])).proxyMetadata)
+        console.log([s.id, s.metadata, s.mutation, s.valid].join("|"));
+' "$ROOT/test/shell-matrix.json")"
+while IFS='|' read -r scenario metadata mutation valid; do
     : > "$MOCK_LOG"
-    if MOCK_BAD_PROXY="$scenario" "${promote[@]}" --apply > "$MOCK_DIR/failure.log" 2>&1; then
-        fail_test "Proxy metadata $scenario must fail."
+    if MOCK_PROXY_METADATA="$metadata" MOCK_BAD_PROXY="$mutation" "${promote[@]}" --apply > "$MOCK_DIR/failure.log" 2>&1; then
+        [[ "$valid" == true ]] || fail_test "Proxy metadata $scenario must fail."
+        grep -qx 'publish|dst|false' "$MOCK_LOG" || fail_test "$scenario must publish."
+    else
+        [[ "$valid" == false ]] || fail_test "Proxy metadata $scenario must pass."
+        grep -q 'Extraction lost\|Extraction changed' "$MOCK_DIR/failure.log"
+        ! grep -q '^publish|' "$MOCK_LOG" || fail_test 'Invalid proxy metadata must block all publisher calls.'
     fi
-    grep -q 'Extraction lost\|Extraction changed' "$MOCK_DIR/failure.log"
-    ! grep -q '^publish|' "$MOCK_LOG" || fail_test 'Invalid proxy metadata must block all publisher calls.'
-done
+done <<< "$proxy_cases"
 
 : > "$MOCK_LOG"
 APIOPS_USE_GLOBAL=true "${promote[@]}"
@@ -274,21 +281,23 @@ for option in --resource-group --source-apim-name --target-apim-name; do
     grep -q "Missing value for $option" "$MOCK_DIR/failure.log"
 done
 
-export AZURE_SUBSCRIPTION_ID='00000000-0000-4000-8000-000000000001'
-unset POC_BACKEND_KEY
-bash "$ROOT/scripts/bash/preprovision.sh"
-POC_BACKEND_KEY='test-only-key-with-at-least-32-characters' bash "$ROOT/scripts/bash/preprovision.sh"
-if AZURE_SUBSCRIPTION_ID=00000000-0000-4000-8000-000000000002 bash "$ROOT/scripts/bash/preprovision.sh" > "$MOCK_DIR/failure.log" 2>&1; then
-    fail_test 'Wrong subscription must fail.'
-fi
-grep -q 'configured subscription' "$MOCK_DIR/failure.log"
-if AZURE_SUBSCRIPTION_ID='' bash "$ROOT/scripts/bash/preprovision.sh" > "$MOCK_DIR/failure.log" 2>&1; then
-    fail_test 'Missing subscription must fail.'
-fi
-grep -q 'Set AZURE_SUBSCRIPTION_ID' "$MOCK_DIR/failure.log"
-if MOCK_NPM_EXIT=1 bash "$ROOT/scripts/bash/preprovision.sh" > "$MOCK_DIR/failure.log" 2>&1; then
-    fail_test 'Failed local tests must block provisioning.'
-fi
+preprovision_cases="$(command node --input-type=module -e '
+    import { readFileSync } from "node:fs";
+    for (const s of JSON.parse(readFileSync(process.argv[1])).preprovision)
+        console.log([s.id, s.subscription, s.key, s.npmExit, s.npmCalls, s.error].join("|"));
+' "$ROOT/test/shell-matrix.json")"
+while IFS='|' read -r scenario subscription key npm_exit npm_calls error; do
+    : > "$MOCK_LOG"
+    if AZURE_SUBSCRIPTION_ID="$subscription" POC_BACKEND_KEY="$key" MOCK_NPM_EXIT="$npm_exit" \
+        bash "$ROOT/scripts/bash/preprovision.sh" > "$MOCK_DIR/failure.log" 2>&1; then
+        [[ -z "$error" ]] || fail_test "$scenario must fail."
+    else
+        [[ -n "$error" ]] || fail_test "$scenario must pass."
+        grep -Eq "$error" "$MOCK_DIR/failure.log" || fail_test "$scenario failed for the wrong reason."
+    fi
+    actual_calls="$(grep -c '^npm-test$' "$MOCK_LOG" || true)"
+    [[ "$actual_calls" == "$npm_calls" ]] || fail_test "$scenario invoked npm incorrectly."
+done <<< "$preprovision_cases"
 
 export AZURE_RESOURCE_GROUP=test-rg SOURCE_APIM_NAME=src TARGET_APIM_NAME=dst
 export SOURCE_GATEWAY_URL=https://src.example.test BACKEND_URL=https://backend.example.test

@@ -1,20 +1,56 @@
 import assert from 'node:assert/strict';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
-/** @param {{url: string, headers?: Record<string,string>, toolName: string, args?: Record<string, unknown>, expected: RegExp, timeoutMs?: number, onPhase?: (event: any) => void}} options */
-export async function verifyTool({ url, headers, toolName, args, expected, timeoutMs = 60_000, onPhase = () => {} }) {
-  assert(Number.isSafeInteger(timeoutMs) && timeoutMs > 0, 'MCP timeout must be a positive integer.');
+/** @param {{url: string, headers?: Record<string,string>, toolName: string, args?: Record<string, unknown>, expected: RegExp, timeoutMs?: number, requestTimeoutMs?: number, maxRetries?: number, retryDelayMs?: number, onPhase?: (event: any) => void}} options */
+export async function verifyTool({
+  url, headers, toolName, args, expected, timeoutMs = 60_000,
+  requestTimeoutMs = 15_000, maxRetries = 2, retryDelayMs = 250, onPhase = () => {},
+}) {
+  for (const value of [timeoutMs, requestTimeoutMs, retryDelayMs]) {
+    assert(Number.isSafeInteger(value) && value > 0 && value <= 2_147_483_647,
+      'MCP timeouts and retry delay must be positive 32-bit integers.');
+  }
+  assert(Number.isSafeInteger(maxRetries) && maxRetries >= 0 && maxRetries <= 5,
+    'MCP maxRetries must be an integer between 0 and 5.');
+  let phase;
+  let phaseController;
   const client = new Client({ name: 'apiops-poc-verifier', version: '1.0.0' });
   const transport = new StreamableHTTPClientTransport(new URL(url), {
     requestInit: { headers },
+    fetch: async (input, init) => {
+      const method = typeof init?.body === 'string' ? JSON.parse(init.body).method : undefined;
+      // Replaying a tool call can duplicate side effects, even after an HTTP error.
+      const retryable = ['initialize', 'notifications/initialized', 'tools/list'].includes(method);
+      const signals = [phaseController.signal, ...(init?.signal ? [init.signal] : [])];
+      const signal = AbortSignal.any(signals);
+      for (let attempt = 0; ; attempt++) {
+        let response;
+        try {
+          response = await fetch(input, {
+            ...init, signal: AbortSignal.any([signal, AbortSignal.timeout(requestTimeoutMs)]),
+          });
+        } catch (error) {
+          if (!retryable || signal.aborted || attempt >= maxRetries ||
+            !['TypeError', 'TimeoutError', 'AbortError'].includes(error.name)) throw error;
+        }
+        if (response && (!retryable || ![408, 429, 502, 503, 504].includes(response.status) ||
+          attempt >= maxRetries)) return response;
+        await response?.body?.cancel();
+        const delayMs = Math.round(Math.min(5000, retryDelayMs * 2 ** attempt * (0.5 + Math.random())));
+        onPhase({ phase, status: 'start', attempt: attempt + 2, retryDelayMs: delayMs,
+          ...(response ? { code: response.status } : {}) });
+        await sleep(delayMs, undefined, { signal });
+      }
+    },
   });
-  let phase;
   let started;
   let failure;
   /** @type {(name: string, action: () => Promise<any>) => Promise<any>} */
   const runPhase = async (name, action) => {
     phase = name;
+    phaseController = new AbortController();
     started = Date.now();
     onPhase({ phase, status: 'start' });
     let timer;
@@ -27,6 +63,7 @@ export async function verifyTool({ url, headers, toolName, args, expected, timeo
       return result;
     } finally {
       clearTimeout(timer);
+      phaseController.abort();
     }
   };
   try {

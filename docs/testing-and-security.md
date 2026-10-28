@@ -36,9 +36,10 @@ npm test
 
 | Suite | Coverage |
 | --- | --- |
-| [server.test.mjs](../test/server.test.mjs) | Seven tests: absent/short startup key, anonymous health, missing/wrong MCP credentials, official-client initialize/list/call, authenticated GET rejection, invalid tool input, compressed-body rejection. |
+| [server.test.mjs](../test/server.test.mjs) | Startup-key validation, anonymous health, MCP authentication/initialize/list/call, method/input/body limits and correlated credential-safe request/error logs. |
 | [preflight.test.mjs](../test/preflight.test.mjs) | Read-only source/target dependency checks, hosting/credential drift rejection and bounded readiness retries. |
-| [mcp-client.test.mjs](../test/mcp-client.test.mjs) | Per-phase errors, notification/tool-call deadlines, no tool replay and no raw credential/response leakage. |
+| [mcp-client.test.mjs](../test/mcp-client.test.mjs) | Phase/request deadlines, bounded transient discovery retries with backoff, no tool replay and no raw credential/response leakage. |
+| [release.test.mjs](../test/release.test.mjs) | Exact stable tag/package-version matching and versioned changelog extraction. |
 | [report.test.mjs](../test/report.test.mjs) | Allowlisted summary fields, privacy, CLI/API counts and failed/incomplete/skipped outcomes. |
 | [api-snapshot.test.mjs](../test/api-snapshot.test.mjs) | Hash-only snapshots, explicit API filters, subset matching, drift rejection and mocked capture/preview/apply with target native binding checks. |
 | [promotion.test.ps1](../test/promotion.test.ps1) | Source-only extraction, target-only publication, preview before apply, separate gateway/key selection, no deletion/affix flags, target binding guard, identical-instance rejection and environment restoration. |
@@ -47,6 +48,9 @@ npm test
 
 [run-shell-tests.mjs](../test/run-shell-tests.mjs) selects the two PowerShell suites
 on Windows and the Bash suite on Linux/macOS. The backend suite runs on all platforms.
+Both shell suites read [shell-matrix.json](../test/shell-matrix.json) for
+preprovision subscription/test guards and canonical/legacy/invalid proxy metadata.
+Add shared cases there rather than independently changing each shell's expectations.
 To explicitly exercise Bash as well (for example in Git Bash on Windows), run:
 
 ```bash
@@ -63,9 +67,13 @@ The backend tests bind a temporary local loopback port and close the server afte
 The promotion suite writes synthetic artifact directories under ignored `artifacts`
 and removes its own directories in `finally`.
 
-The compressed-body test deliberately produces an `UnsupportedMediaTypeError` log.
-That log is expected if the test asserts HTTP 415 and the suite passes; do not
-confuse it with an unexpected failure in a live deployment.
+Request failures use structured `mcp_request_failed` events with a status and
+server-generated request ID, not raw parser errors or request content. Tests
+capture these events and assert that private markers do not appear in them.
+
+`npm run test:container` is a separate Docker smoke test (also run in CI).
+It verifies a non-root image, `/health`, authentication, an actual MCP call,
+JSON logs and clean SIGTERM exit without contacting Azure.
 
 ### Local backend development
 
@@ -83,6 +91,11 @@ does not exercise MCP authentication or an APIM gateway.
 
 The deployed service uses Node 22 LTS and `npm start`; local Node must be 22 or later.
 `PORT` defaults to 8080 and must be an integer from 1 to 65535.
+The container uses the same server and port, with `node src/server.mjs` as PID 1.
+Logs are JSON lines with timestamp, level and event. Request logs add a generated
+request ID, method, known route, HTTP status and duration; error logs use the same
+ID. Query strings, headers, bodies, tool arguments and raw errors are excluded.
+`/health` is liveness only, not a check of APIM connectivity or credentials.
 
 ## Live acceptance checklist
 

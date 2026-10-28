@@ -114,6 +114,12 @@ A missing/short backend key intentionally fails startup. Do not weaken startup
 validation to get a green health probe. Health is `GET /health`; `/mcp` is not a
 generic liveness URL.
 
+For the container option, use `azd --cwd deploy/container` commands. Check image
+push success, the Web App's system-assigned identity and ACR `AcrPull` assignment,
+`acrUseManagedIdentityCreds=true`, `WEBSITES_PORT=8080`, and container startup logs.
+Role assignment propagation can delay the first pull. Do not enable ACR admin
+credentials to bypass a missing assignment. Code-mode Oryx checks do not apply.
+
 ## HTTP and MCP failures
 
 | Symptom | Likely boundary | Checks |
@@ -135,8 +141,15 @@ proof of protocol compliance. It performs initialization before tool discovery/c
 The shared verifier now reports `initialize`, `tools/list` or `tools/call`,
 elapsed milliseconds, the 60-second deadline and a numeric error code when
 available. It deliberately omits raw response/tool-error bodies and credentials.
-Only readiness GETs receive bounded retries; a tool call or API publication is
-never replayed automatically. The Actions summary identifies failed/incomplete
+Readiness GETs and MCP initialization/discovery receive bounded retries.
+The verifier defaults to a 15-second HTTP request timeout, a 60-second total
+deadline per protocol phase, and at most two retries for initialization,
+initialization notification and `tools/list`. Transient network/timeouts and
+HTTP 408/429/502/503/504 use exponential backoff starting at 250 ms with jitter
+and a 5-second maximum delay. Authentication/validation failures, `tools/call`
+and API publication are never retried automatically. Programmatic verifier
+options are `requestTimeoutMs`, `timeoutMs`, `maxRetries` (0-5) and `retryDelayMs`;
+the phase deadline also bounds retry sleeps. The Actions summary identifies failed/incomplete
 stages, including failures before extraction or Azure login.
 
 ## Source snapshot fails parsing `<policies>` as JSON

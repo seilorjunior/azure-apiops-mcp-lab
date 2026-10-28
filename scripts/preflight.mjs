@@ -104,6 +104,12 @@ export async function runPreflight({
     });
     const appKey = settings.properties?.POC_BACKEND_KEY;
     requireCheck(typeof appKey === 'string' && appKey.length >= 32, 'Backend credential is missing or too short.');
+    if (config.properties.linuxFxVersion?.startsWith('DOCKER|')) {
+      requireCheck(config.properties.acrUseManagedIdentityCreds === true,
+        'Container backend must use managed identity for ACR pulls.');
+      requireCheck(settings.properties.WEBSITES_PORT === '8080',
+        'Container backend WEBSITES_PORT must be 8080.');
+    }
     for (const [label, name] of [['source', sourceApimName], ['target', targetApimName]]) {
       const service = `${group}/providers/Microsoft.ApiManagement/service/${name}`;
       const apim = await read(service, { label: `${label} APIM` });

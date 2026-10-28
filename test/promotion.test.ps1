@@ -173,11 +173,10 @@ try {
     Assert-Mock ($tests[2].gateway -eq 'https://dst.example.test' -and $tests[2].key -eq 'dst-key') 'Target gateway/key mismatch.'
     Assert-Mock ($env:POC_APIM_KEY -eq 'test-previous-key') 'Subscription-key environment was not restored.'
 
-    $global:ApiopsPromotionMock.ProxyMetadata = 'legacy'
-    & $promote -ResourceGroup test-rg -SourceApimName src -TargetApimName dst
-    $global:ApiopsPromotionMock.ProxyMetadata = 'canonical'
-    foreach ($scenario in @('missing', 'changed', 'backend', 'type')) {
-        $global:ApiopsPromotionMock.BadProxy = $scenario
+    $matrix = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'shell-matrix.json') | ConvertFrom-Json
+    foreach ($scenario in $matrix.proxyMetadata) {
+        $global:ApiopsPromotionMock.ProxyMetadata = $scenario.metadata
+        $global:ApiopsPromotionMock.BadProxy = $scenario.mutation
         $global:ApiopsPromotionMock.Calls.Clear()
         $rejected = $false
         try {
@@ -186,9 +185,12 @@ try {
             if ($_.Exception.Message -notmatch 'Extracted API configuration validation failed') { throw }
             $rejected = $true
         }
-        Assert-Mock $rejected "Proxy metadata $scenario must fail validation."
-        Assert-Mock (@($global:ApiopsPromotionMock.Calls | Where-Object kind -eq 'publish').Count -eq 0) 'Invalid proxy metadata must block publisher calls.'
+        Assert-Mock ($rejected -eq (-not $scenario.valid)) "Unexpected result for proxy metadata $($scenario.id)."
+        $publications = @($global:ApiopsPromotionMock.Calls | Where-Object kind -eq 'publish')
+        $expectedPublications = if ($scenario.valid) { 2 } else { 0 }
+        Assert-Mock ($publications.Count -eq $expectedPublications) 'Proxy metadata must gate publisher calls.'
     }
+    $global:ApiopsPromotionMock.ProxyMetadata = 'canonical'
     $global:ApiopsPromotionMock.BadProxy = 'none'
 
     $global:ApiopsPromotionMock.ExtraResource = $true

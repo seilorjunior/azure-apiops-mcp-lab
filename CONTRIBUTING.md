@@ -6,7 +6,12 @@ material you are not authorized to share.
 
 ## Local validation
 
-Use Node.js 22 or later and PowerShell 7.2+ on Windows, or Bash on Linux/macOS:
+Use Node.js 22 or later and PowerShell 7.2+ on Windows, or Bash on Linux/macOS.
+`.nvmrc` selects Node 22 and `.editorconfig` defines shared whitespace defaults.
+The optional devcontainer installs Node, Azure CLI/Bicep, azd and Docker; it
+does not authenticate or deploy resources.
+
+From the repository root:
 
 ```text
 npm ci
@@ -44,6 +49,8 @@ These GitHub settings are not installed by copying repository files.
 - Preserve dry-run defaults, source/target isolation, explicit API-only filters,
   secret-redaction checks and source-preservation assertions.
 - Keep PowerShell and Bash behavior aligned; use LF for shell scripts.
+- Extend `test/shell-matrix.json` for shared preprovision/proxy scenarios; both
+  shell suites must consume the same case rather than diverging.
 - Do not commit `.env` files, azd state, raw APIM artifacts, backend credentials,
   subscription keys, access tokens or generated deployment archives.
 - [Hash-only API snapshots](docs/api-snapshots.md) may be committed after reviewing
@@ -60,3 +67,20 @@ These GitHub settings are not installed by copying repository files.
 
 Contributions are provided under the [MIT license](LICENSE). Security issues
 must follow [the private reporting policy](SECURITY.md), not public issue templates.
+
+## Releases
+
+Record user-visible changes under `Unreleased` in [CHANGELOG.md](CHANGELOG.md).
+Only maintainers publish releases; preparing a PR does not publish or deploy.
+For a release, update `package.json` and the lockfile with `npm version <patch|minor|major> --no-git-tag-version`,
+move the relevant changelog entries to `## [<version>] - YYYY-MM-DD`, and commit
+the reviewed changes through the normal PR process.
+
+After merging and checking CI, create an annotated `v<version>` tag on that
+reviewed commit and push it. The release workflow checks that the stable SemVer
+tag exactly matches the package version and has a nonempty versioned changelog,
+runs tests/lint/types and builds the image, then publishes those changelog notes
+as a GitHub Release. It does not publish npm packages or images, deploy Azure,
+or grant Azure permissions. Protect `v*` tags with a repository ruleset that
+restricts creation/update/deletion to maintainers; copying the workflow does
+not configure repository rulesets.

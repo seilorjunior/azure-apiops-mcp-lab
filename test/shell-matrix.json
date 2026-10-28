@@ -1,0 +1,17 @@
+{
+  "preprovision": [
+    { "id": "prompted-key", "subscription": "00000000-0000-4000-8000-000000000001", "key": "", "npmExit": 0, "npmCalls": 1, "error": "" },
+    { "id": "environment-key", "subscription": "00000000-0000-4000-8000-000000000001", "key": "test-only-key-with-at-least-32-characters", "npmExit": 0, "npmCalls": 1, "error": "" },
+    { "id": "wrong-subscription", "subscription": "00000000-0000-4000-8000-000000000002", "key": "", "npmExit": 0, "npmCalls": 0, "error": "configured subscription" },
+    { "id": "missing-subscription", "subscription": "", "key": "", "npmExit": 0, "npmCalls": 0, "error": "Set AZURE_SUBSCRIPTION_ID" },
+    { "id": "failing-tests", "subscription": "00000000-0000-4000-8000-000000000001", "key": "", "npmExit": 1, "npmCalls": 1, "error": "exit (code )?1" }
+  ],
+  "proxyMetadata": [
+    { "id": "canonical", "metadata": "canonical", "mutation": "none", "valid": true },
+    { "id": "legacy", "metadata": "legacy", "mutation": "none", "valid": true },
+    { "id": "missing-metadata", "metadata": "canonical", "mutation": "missing", "valid": false },
+    { "id": "changed-transport", "metadata": "canonical", "mutation": "changed", "valid": false },
+    { "id": "wrong-backend", "metadata": "canonical", "mutation": "backend", "valid": false },
+    { "id": "wrong-api-type", "metadata": "canonical", "mutation": "type", "valid": false }
+  ]
+}

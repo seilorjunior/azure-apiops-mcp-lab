@@ -8,8 +8,9 @@ import { verifyTool } from '../scripts/mcp-client.mjs';
 const key = 'local-test-key-not-a-secret-1234567890';
 let server;
 let base;
+const logs = [];
 before(async () => {
-  server = createApp(key).listen(0, '127.0.0.1');
+  server = createApp(key, { log: (level, event, fields) => logs.push({ level, event, ...fields }) }).listen(0, '127.0.0.1');
   await once(server, 'listening');
   base = `http://127.0.0.1:${server.address().port}`;
 });
@@ -74,4 +75,19 @@ test('oversized bodies are rejected', async () => {
     body: JSON.stringify({ pad: 'x'.repeat(70 * 1024) }),
   });
   assert.equal(response.status, 413);
+});
+test('request and error logs are correlated and exclude untrusted values', async () => {
+  const marker = 'private-query-body-header';
+  const response = await fetch(`${base}/mcp?secret=${marker}`, {
+    method: 'POST',
+    headers: { 'x-poc-backend-key': key, 'content-type': 'application/json', 'x-request-id': marker },
+    body: `{"${marker}":`,
+  });
+  assert.equal(response.status, 400);
+  const requestId = response.headers.get('x-request-id');
+  assert.match(requestId, /^[a-f0-9-]{36}$/);
+  const entries = logs.filter((entry) => entry.requestId === requestId);
+  assert.ok(entries.some((entry) => entry.event === 'mcp_request_failed' && entry.status === 400));
+  assert.ok(entries.some((entry) => entry.event === 'http_request' && entry.route === '/mcp' && entry.elapsedMs >= 0));
+  assert.doesNotMatch(JSON.stringify(logs), new RegExp(`${key}|${marker}`));
 });

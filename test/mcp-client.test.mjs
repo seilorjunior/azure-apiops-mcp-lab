@@ -12,6 +12,11 @@ async function fixture(options, action) {
     for await (const chunk of req) text += chunk;
     const message = JSON.parse(text);
     methods.push(message.method);
+    if (message.method === options.transientAt &&
+      methods.filter((method) => method === message.method).length <= (options.failures ?? 1)) {
+      res.writeHead(options.status ?? 503).end('fixture-private-key');
+      return;
+    }
     if (message.method === options.hangAt) return;
     if (message.method === options.failAt) {
       res.writeHead(401, { 'content-type': 'text/plain' }).end('fixture-private-key private-subscription-url');
@@ -74,7 +79,7 @@ test('MCP failures preserve safe phase, timing and code without raw response or 
   });
 });
 
-test('MCP deadlines bound initialization notifications and tool calls without retries', async () => {
+test('MCP phase deadlines bound initialization notifications and tool calls', async () => {
   for (const hangAt of ['notifications/initialized', 'tools/call']) {
     await fixture({ hangAt }, async ({ options, methods }) => {
       const start = Date.now();
@@ -87,5 +92,58 @@ test('MCP deadlines bound initialization notifications and tool calls without re
       });
       assert.equal(methods.filter((method) => method === hangAt).length, 1);
     });
+  }
+});
+
+test('transient discovery failures retry with bounded exponential backoff', async (t) => {
+  t.mock.method(Math, 'random', () => 0.5);
+  for (const phase of ['initialize', 'notifications/initialized', 'tools/list']) {
+    await fixture({ transientAt: phase, failures: 2 }, async ({ options, methods }) => {
+      const phases = [];
+      await verifyTool({ ...options, retryDelayMs: 10, onPhase: (event) => phases.push(event) });
+      assert.equal(methods.filter((method) => method === phase).length, 3);
+      assert.deepEqual(phases.filter((event) => event.attempt).map((event) => event.attempt), [2, 3]);
+      assert.deepEqual(phases.filter((event) => event.attempt).map((event) => event.retryDelayMs), [10, 20]);
+      assert.equal(methods.filter((method) => method === 'tools/call').length, 1);
+    });
+  }
+});
+
+test('phase deadline cancels backoff and maxRetries zero disables retrying', async () => {
+  for (const [retryDelayMs, maxRetries] of [[5000, 5], [1, 0]]) {
+    await fixture({ transientAt: 'initialize', failures: 10 }, async ({ options, methods }) => {
+      const started = Date.now();
+      await assert.rejects(verifyTool({ ...options, retryDelayMs, maxRetries, timeoutMs: 100 }));
+      assert.equal(methods.filter((method) => method === 'initialize').length, 1);
+      assert.ok(Date.now() - started < 1500);
+    });
+  }
+});
+
+test('transient failures stop at the retry limit and never replay tools/call', async () => {
+  for (const [phase, count] of [['initialize', 3], ['tools/list', 3], ['tools/call', 1]]) {
+    await fixture({ transientAt: phase, failures: 10, status: 429 }, async ({ options, methods }) => {
+      await assert.rejects(verifyTool({ ...options, retryDelayMs: 1 }), (error) => {
+        assert.equal(error.phase, phase);
+        assert.doesNotMatch(error.stack, /fixture-private-key/);
+        return true;
+      });
+      assert.equal(methods.filter((method) => method === phase).length, count);
+    });
+  }
+});
+
+test('request timeouts retry discovery but stay within the phase deadline', async () => {
+  await fixture({ hangAt: 'initialize' }, async ({ options, methods }) => {
+    const started = Date.now();
+    await assert.rejects(verifyTool({ ...options, timeoutMs: 500, requestTimeoutMs: 40, retryDelayMs: 1 }));
+    assert.equal(methods.filter((method) => method === 'initialize').length, 3);
+    assert.ok(Date.now() - started < 1500);
+  });
+});
+
+test('MCP retry options reject invalid bounds', async () => {
+  for (const options of [{ timeoutMs: 0 }, { requestTimeoutMs: -1 }, { maxRetries: 6 }, { retryDelayMs: 0 }]) {
+    await assert.rejects(verifyTool({ url: 'http://localhost', toolName: 'echo', expected: /ok/, ...options }));
   }
 });
