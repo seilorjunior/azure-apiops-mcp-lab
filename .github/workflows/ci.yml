@@ -48,12 +48,14 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:coverage
       - name: ShellCheck
-        run: shellcheck scripts/bash/*.sh test/bash.test.sh
+        run: shellcheck -x -P SCRIPTDIR scripts/bash/*.sh test/bash.test.sh
       - name: PSScriptAnalyzer
         shell: pwsh
         run: |
           Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
-          $results = Invoke-ScriptAnalyzer -Path scripts/ps1, test -Recurse -Severity Error, Warning
+          $results = 'scripts/ps1', 'test' | ForEach-Object {
+            Invoke-ScriptAnalyzer -Path $_ -Recurse -Severity Error, Warning
+          }
           $results | Format-Table -AutoSize
           if ($results) { exit 1 }
 

@@ -1,4 +1,7 @@
 #Requires -Version 7.2
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidGlobalVars', '', Justification = 'Mocks share state and native exit codes with scripts invoked in child scopes.')]
+param()
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -65,7 +68,7 @@ try {
     if ((Get-Location).Path -ne $previousLocation.Path) {
         throw 'The hook must restore its working directory after failure.'
     }
-    Write-Host 'PASS: prompted and environment-supplied parameters, subscription guard, test failure propagation and location restoration.'
+    Write-Information 'PASS: prompted and environment-supplied parameters, subscription guard, test failure propagation and location restoration.' -InformationAction Continue
 } finally {
     $env:AZURE_SUBSCRIPTION_ID = $previousSubscription
     $env:POC_BACKEND_KEY = $previousKey

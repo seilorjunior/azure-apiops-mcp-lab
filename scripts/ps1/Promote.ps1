@@ -61,8 +61,8 @@ try {
     Invoke-Checked -Command $cli -Arguments ($publish + @('--dry-run'))
     Complete-Stage publisher-preview
     if (-not $Apply) {
-        Write-Host "Dry-run complete. Artifacts: $folder"
-        Write-Host "Review changes to $TargetApimName, then re-run with -Apply to publish and test."
+        Write-Information "Dry-run complete. Artifacts: $folder" -InformationAction Continue
+        Write-Information "Review changes to $TargetApimName, then re-run with -Apply to publish and test." -InformationAction Continue
         return
     }
     Start-Stage publication
@@ -93,7 +93,7 @@ try {
     Start-Stage target-mcp
     Test-McpEndpoints -GatewayUrl $targetGateway -EnvironmentName target -Key $targetKey
     Complete-Stage target-mcp
-    Write-Host "PASS: both MCP modes promoted; source configuration unchanged. Artifacts: $folder"
+    Write-Information "PASS: both MCP modes promoted; source configuration unchanged. Artifacts: $folder" -InformationAction Continue
 } finally {
     $env:AZURE_API_VERSION = $previousApiVersion
     Pop-Location

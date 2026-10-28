@@ -8,7 +8,9 @@ apply=false
 while (( $# )); do
     case "$1" in
         --resource-group|--source-apim-name|--target-apim-name)
-            (( $# >= 2 )) && [[ -n "$2" && "$2" != --* ]] || fail "Missing value for $1."
+            if (( $# < 2 )) || [[ -z "$2" || "$2" == --* ]]; then
+                fail "Missing value for $1."
+            fi
             case "$1" in
                 --resource-group) resource_group="$2" ;;
                 --source-apim-name) source_apim="$2" ;;

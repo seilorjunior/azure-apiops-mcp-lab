@@ -261,9 +261,18 @@ if bash "$ROOT/scripts/bash/promote.sh" --resource-group test-rg --source-apim-n
     fail_test 'Identical instances must fail.'
 fi
 grep -q 'must be different' "$MOCK_DIR/failure.log"
-if bash "$ROOT/scripts/bash/promote.sh" --resource-group > "$MOCK_DIR/failure.log" 2>&1; then
-    fail_test 'Missing option value must fail.'
-fi
+for option in --resource-group --source-apim-name --target-apim-name; do
+    for value in '' --apply; do
+        if bash "$ROOT/scripts/bash/promote.sh" "$option" "$value" > "$MOCK_DIR/failure.log" 2>&1; then
+            fail_test 'Empty or option-like values must fail.'
+        fi
+        grep -q "Missing value for $option" "$MOCK_DIR/failure.log"
+    done
+    if bash "$ROOT/scripts/bash/promote.sh" "$option" > "$MOCK_DIR/failure.log" 2>&1; then
+        fail_test 'Missing option value must fail.'
+    fi
+    grep -q "Missing value for $option" "$MOCK_DIR/failure.log"
+done
 
 export AZURE_SUBSCRIPTION_ID='00000000-0000-4000-8000-000000000001'
 unset POC_BACKEND_KEY
