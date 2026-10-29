@@ -63,6 +63,33 @@ test('preflight checks both environments without writes or target API requiremen
   assert.equal(f.events.at(-1).status, 'pass');
 });
 
+test('preflight accepts supported hosting tiers regardless of casing', async () => {
+  for (const tier of ['Basic', 'Standard', 'Premium', 'PremiumV2', 'PremiumV3', 'PremiumV4', 'Isolated', 'IsolatedV2']) {
+    for (const value of [tier, tier.toLowerCase(), tier.toUpperCase()]) {
+      const f = fixture();
+      f.resources[planId].sku.tier = value;
+      await runPreflight(f.options);
+      assert.equal(f.healthCalls, 1);
+      assert.equal(f.events.at(-1).status, 'pass');
+    }
+  }
+});
+
+test('preflight rejects unsupported or malformed hosting tiers before readiness', async () => {
+  for (const sku of [
+    { name: 'F1', tier: 'Free' }, { name: 'F1', tier: 'FREE' },
+    { name: 'D1', tier: 'Shared' }, { name: 'D1', tier: 'shared' },
+    { name: 'B1', tier: 'Unknown' }, { name: 'B1' },
+    { name: 'B1', tier: null }, { name: 'B1', tier: 1 }, undefined,
+  ]) {
+    const f = fixture();
+    f.resources[planId].sku = sku;
+    await assert.rejects(runPreflight(f.options), /B1 or higher/);
+    assert.equal(f.healthCalls, 0);
+    assert.equal(f.events.at(-1).status, 'fail');
+  }
+});
+
 test('container preflight checks managed registry pulls and the expected port', async () => {
   const f = fixture();
   const config = f.resources[`${appId}/config/web`].properties;

@@ -16,6 +16,11 @@ The package version identifies the lab, not the upstream APIops CLI.
 - Tag-triggered GitHub releases, feature requests and community support guidance.
 - Optional resource-group monthly budget alerts and one-command teardown guidance.
 
+### Fixed
+
+- Accept supported App Service hosting tiers regardless of Azure's response casing
+  during promotion preflight, while continuing to reject Free/Shared and unknown tiers.
+
 ## [1.0.0]
 
 ### Added

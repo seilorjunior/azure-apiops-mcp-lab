@@ -91,8 +91,9 @@ export async function runPreflight({
     requireCheck(app.properties?.state === 'Running', 'Backend App Service is not Running.');
     requireCheck(typeof app.properties.serverFarmId === 'string', 'Backend App Service plan binding is missing.');
     const plan = await read(app.properties.serverFarmId, { version: webVersion, label: 'backend hosting plan' });
-    requireCheck(['Basic', 'Standard', 'Premium', 'PremiumV2', 'PremiumV3', 'PremiumV4', 'Isolated', 'IsolatedV2']
-      .includes(plan.sku?.tier), 'Backend hosting plan must support Always On (B1 or higher); Free/Shared plans are not supported. Review cost before changing the SKU.');
+    const tier = typeof plan.sku?.tier === 'string' ? plan.sku.tier.toLowerCase() : '';
+    requireCheck(['basic', 'standard', 'premium', 'premiumv2', 'premiumv3', 'premiumv4', 'isolated', 'isolatedv2']
+      .includes(tier), 'Backend hosting plan must support Always On (B1 or higher); Free/Shared plans are not supported. Review cost before changing the SKU.');
     const config = await read(`${appId}/config/web`, { version: webVersion, label: 'backend application configuration' });
     requireCheck(config.properties?.alwaysOn === true, 'Backend Always On is disabled. Restore the intended configuration before promotion.');
     requireCheck(config.properties.healthCheckPath === '/health', 'Backend health check path must be /health.');
