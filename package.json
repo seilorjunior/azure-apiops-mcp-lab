@@ -35,7 +35,7 @@
     "@azure-tools/apiops-cli": "1.0.5",
     "@eslint/js": "9.39.5",
     "@types/express": "5.0.6",
-    "@types/node": "26.6.5",
+    "@types/node": "26.6.6",
     "eslint": "9.39.5",
     "globals": "17.13.0",
     "typescript": "7.0.2"
