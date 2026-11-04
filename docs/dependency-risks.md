@@ -93,8 +93,9 @@ No unsupported major overrides, forced fixes or suppressed advisories were used.
 - Do not place real customer content or production traffic in this lab.
 - Compressed requests are rejected by the backend, but that does not clear
   body-parser's advisory or secure every transitive dependency path.
-- Review Dependabot updates and upstream releases with the existing regression
-  suites; do not enable automatic merging of toolchain changes.
+- Validate Dependabot updates with the existing regression suites. Only npm
+  patch/minor updates may use the [guarded auto-merge workflow](github-actions.md#dependabot-auto-merge);
+  major toolchain upgrades and GitHub Actions changes require manual review.
 
 Advisories: [GitHub Advisory Database](https://github.com/advisories).
 See [SECURITY.md](../SECURITY.md) for private reporting.

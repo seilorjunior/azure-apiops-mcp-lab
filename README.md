@@ -153,13 +153,17 @@ on Linux/macOS. azd also selects platform-specific hooks automatically.
 ### Pull request reviews
 
 The upstream repository automatically requests Copilot reviews for new pull
-requests targeting any branch, including drafts. New pushes do not automatically
-request another review. For PRs into `main`, the
-[CODEOWNERS file](.github/CODEOWNERS) assigns every file to `@seilorjunior`.
-A separate review ruleset requires a code-owner approval, with a PR-only owner
+requests targeting any branch, including drafts. The
+[review setup](docs/github-actions.md#configure-pull-request-protection-and-copilot)
+also enables re-reviews on new pushes and scoped Copilot approvals.
+For PRs into `main`, the [CODEOWNERS file](.github/CODEOWNERS) assigns files to
+`@seilorjunior`, except root `package.json` and `package-lock.json`.
+A separate review ruleset requires an approval and code-owner review, with a PR-only owner
 bypass for solo-maintainer merges. This bypass also applies to other authors' PRs;
-it is not an author-based exemption. The owner reviews and merges PRs manually.
-Copilot feedback does not count as approval or replace required CI.
+it is not an author-based exemption. A metadata-only workflow can queue Dependabot
+npm patch/minor updates for auto-merge after approval and all required CI passes.
+Major updates, Actions updates and application changes retain manual review.
+Copilot comments alone do not count as approval or replace required CI.
 
 Fork maintainers must replace the CODEOWNERS login and configure their own review
 and Copilot rulesets; copying repository files does not install these settings. See

@@ -1,1 +1,5 @@
 * @seilorjunior
+
+# These paths still require an approval; scoped Copilot approval can satisfy it.
+/package.json
+/package-lock.json
