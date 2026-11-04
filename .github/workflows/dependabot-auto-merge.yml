@@ -1,0 +1,125 @@
+name: Dependabot auto-merge
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, edited, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependabot-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  enable:
+    name: Queue eligible npm updates
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.base.ref == github.event.repository.default_branch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # This privileged workflow only reads API metadata; never check out PR code.
+      - name: Clear any previous auto-merge request before rechecking eligibility
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const { data: pull } = await github.rest.pulls.get({
+              ...context.repo, pull_number: context.issue.number,
+            });
+            if (pull.auto_merge) {
+              await github.graphql(`
+                mutation($id: ID!) {
+                  disablePullRequestAutoMerge(input: {pullRequestId: $id}) {
+                    pullRequest { number }
+                  }
+                }
+              `, { id: pull.node_id });
+              core.notice('Cleared the previous auto-merge request; eligibility must pass again.');
+            }
+      - name: Fetch verified Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@d7267f607e9d3fb96fc2fbe83e0af444713e90b7 # v2
+      - name: Check scope and protections, then enable auto-merge
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          UPDATED_DEPENDENCIES: ${{ steps.metadata.outputs.updated-dependencies-json }}
+        with:
+          script: |
+            const dependencies = JSON.parse(process.env.UPDATED_DEPENDENCIES);
+            const allowedUpdates = new Set(['version-update:semver-patch', 'version-update:semver-minor']);
+            if (!Array.isArray(dependencies) || dependencies.length === 0 ||
+                !dependencies.every((dependency) =>
+                  ['npm', 'npm_and_yarn'].includes(dependency.packageEcosystem) &&
+                  allowedUpdates.has(dependency.updateType))) {
+              core.notice('Manual review required: only npm patch/minor updates are eligible.');
+              return;
+            }
+            const parameters = { ...context.repo, pull_number: context.issue.number };
+            const { data: pull } = await github.rest.pulls.get(parameters);
+            const { data: repository } = await github.rest.repos.get(context.repo);
+            if (pull.state !== 'open' || pull.draft || pull.user.login !== 'dependabot[bot]' ||
+                pull.head.repo?.full_name !== repository.full_name ||
+                pull.base.ref !== repository.default_branch ||
+                pull.head.sha !== context.payload.pull_request.head.sha) {
+              core.notice('Manual review required: pull request identity, branch or revision is not eligible.');
+              return;
+            }
+            const files = await github.paginate(github.rest.pulls.listFiles, { ...parameters, per_page: 100 });
+            const allowedFiles = new Set(['package.json', 'package-lock.json']);
+            if (files.length === 0 || files.length !== pull.changed_files ||
+                !files.every((file) => allowedFiles.has(file.filename) && file.status === 'modified')) {
+              core.notice('Manual review required: changes must only modify root npm manifest/lockfile paths.');
+              return;
+            }
+            if (!repository.allow_auto_merge) {
+              throw new Error('Enable Allow auto-merge in repository settings before using this workflow.');
+            }
+            const { data: rules } = await github.request(
+              'GET /repos/{owner}/{repo}/rules/branches/{branch}',
+              { ...context.repo, branch: pull.base.ref },
+            );
+            const requiredChecks = [
+              'Test (ubuntu-24.04)', 'Test (windows-2025)', 'Lint, types and coverage',
+              'Validate infrastructure', 'Container smoke test',
+            ];
+            const checkRules = rules.filter((rule) => rule.type === 'required_status_checks');
+            const checks = checkRules.flatMap((rule) => rule.parameters.required_status_checks);
+            if (!checkRules.some((rule) => rule.parameters.strict_required_status_checks_policy) ||
+                !requiredChecks.every((name) =>
+                  checks.some((check) => check.context === name && check.integration_id === 15368))) {
+              throw new Error('Require all five CI checks from GitHub Actions in a strict branch ruleset first.');
+            }
+            if (!rules.some((rule) => rule.type === 'pull_request' &&
+                rule.parameters.required_approving_review_count >= 1 &&
+                rule.parameters.require_code_owner_review &&
+                rule.parameters.dismiss_stale_reviews_on_push)) {
+              throw new Error('Keep required approval, Code Owner review and stale-review dismissal enabled.');
+            }
+            const { data: latest } = await github.rest.pulls.get(parameters);
+            if (latest.head.sha !== pull.head.sha) {
+              throw new Error('The pull request changed during evaluation; wait for its next workflow run.');
+            }
+            if (latest.mergeable_state === 'clean') {
+              const { data: result } = await github.rest.pulls.merge({
+                ...parameters, sha: pull.head.sha, merge_method: 'squash',
+              });
+              if (!result.merged) {
+                throw new Error(`Protected merge failed: ${result.message}`);
+              }
+              core.notice('Merged the eligible update after GitHub enforced protected checks and approval.');
+              return;
+            }
+            await github.graphql(`
+              mutation($id: ID!) {
+                enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: SQUASH}) {
+                  pullRequest { number }
+                }
+              }
+            `, { id: pull.node_id });
+            core.notice('Auto-merge enabled; GitHub still requires approval and all protected checks to pass.');

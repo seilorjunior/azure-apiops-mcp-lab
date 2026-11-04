@@ -25,21 +25,28 @@ and compiles Bicep without logging in.
 
 Do not deploy resources, grant roles or run a live promotion as part of a pull
 request. Never use `pull_request_target` to execute untrusted contributor code
-with an Azure identity. Dependabot PRs are subject to the same review and CI.
+with an Azure identity. The dependency auto-merge workflow only reads API
+metadata; it never checks out or executes PR code. Dependabot PRs still require
+approval and CI.
 
 ## Changes and review
 
 The upstream repository requests Copilot reviews automatically for new PRs targeting
-any branch, including drafts. New pushes do not automatically trigger another
-review; request a fresh Copilot review manually when needed. Address relevant
+any branch, including drafts. Follow the
+[review setup](docs/github-actions.md#configure-pull-request-protection-and-copilot)
+to enable re-reviews on new pushes and scoped Copilot approvals. Address relevant
 feedback and keep required CI checks passing. The
-[CODEOWNERS file](.github/CODEOWNERS) assigns every file to `@seilorjunior`.
-PRs into `main` require code-owner approval unless the owner explicitly uses the
+[CODEOWNERS file](.github/CODEOWNERS) assigns files to `@seilorjunior`, except root
+`package.json` and `package-lock.json`; those paths still require an approval.
+Other files in PRs into `main` require code-owner approval unless the owner explicitly uses the
 PR-only review bypass. The owner uses this bypass for their own PRs because GitHub
 does not allow self-approval. It can also bypass approval for other authors' PRs;
 the agreed policy is to review and approve those PRs normally.
-Required CI and conversation resolution still apply. Automatic merging is disabled.
-Copilot feedback does not count as a code-owner approval.
+Required CI and conversation resolution still apply. Only verified Dependabot
+npm patch/minor updates modifying the two root npm files are eligible for
+automatic merging. Major updates and GitHub Actions changes require manual review.
+Copilot comments are not approvals; explicitly enabled Copilot approvals can
+satisfy the generic approval requirement on the two npm paths, not code-owner review.
 
 Fork maintainers must configure their own repository protections and Copilot
 ruleset using the [setup checklist](docs/github-actions.md#repository-setup-checklist).

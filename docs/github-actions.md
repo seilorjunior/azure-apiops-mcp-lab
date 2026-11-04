@@ -17,6 +17,7 @@ passed or that the Azure lab works.
 | [Copilot](#copilot) | GitHub-managed code review. | A manual review request or an automatic review rule. | Gather review context and provide feedback on proposed changes. |
 | [Copilot cloud agent](#copilot-cloud-agent) | GitHub-managed coding agent. | A task is delegated to the agent, or an existing task is continued. | Investigate or implement a requested change in a cloud environment. |
 | [Dependabot Updates](#dependabot-updates) | GitHub-managed; configured by [dependabot.yml](../.github/dependabot.yml). | Weekly version-update checks; checks can also be requested from Dependabot's UI. | Propose npm dependency and GitHub Actions updates. |
+| [Dependabot auto-merge](#dependabot-auto-merge) | [dependabot-auto-merge.yml](../.github/workflows/dependabot-auto-merge.yml) | Dependabot PR creation, reopening, new commits, edits or readiness for review. | Queue eligible npm patch/minor updates after verifying file scope and required branch rules. |
 | [Dependency risk audit](#dependency-risk-audit) | [dependency-audit.yml](../.github/workflows/dependency-audit.yml) | Mondays at 09:23 UTC or manual dispatch. | Evaluate known dependency advisories and time-limited exceptions. |
 | [Promote APIM APIs](#promote-apim-apis) | [promote.yml](../.github/workflows/promote.yml) | Manual dispatch only, with environment approval. | Preview or apply API configuration promotion to an existing Azure lab. |
 | [Release](#release) | [release.yml](../.github/workflows/release.yml) | Push of a tag matching `v*.*.*`. | Verify the tagged code and publish versioned changelog notes as a GitHub release. |
@@ -57,7 +58,7 @@ not an air-gapped workflow.
 
 New runs cancel older in-progress CI runs for the same Git ref. Read the failed
 job's logs to identify whether the problem is platform-specific, code quality,
-Bicep or Docker. The three checks recommended for branch protection are documented
+Bicep or Docker. The five checks required for dependency auto-merge are documented
 under [PR protection setup](#configure-pull-request-protection-and-copilot);
 creating workflow files alone does not make every job a required merge check.
 
@@ -88,14 +89,16 @@ agent and not a test suite. Its Actions work supports agentic review capabilitie
 such as gathering repository context. The useful output is review feedback on
 the PR; workflow logs help diagnose context-gathering failures.
 
-In the upstream repository, the configured ruleset automatically requests review
-for new PRs targeting any branch, including drafts. New pushes do not automatically
-request another review. Request a follow-up from the PR's **Reviewers** menu when
-needed. See [the review ruleset setup](#configure-pull-request-protection-and-copilot)
-for the exact settings to recreate in a fork.
+The configured ruleset automatically requests review for new PRs targeting any
+branch, including drafts. Enable **Review new pushes** using
+[the review ruleset setup](#configure-pull-request-protection-and-copilot)
+so new commits receive another review. Existing PRs may need an initial request
+from their **Reviewers** menu.
 
-Review suggestions before applying them. Copilot feedback does not count as a
-required human approval, does not replace CI and does not authorize an Azure job.
+Review suggestions before applying them. Copilot comments do not count as an
+approval. With auto-approval explicitly enabled, Copilot can submit approvals
+that count toward the generic approval requirement for the two root npm paths.
+It does not replace code-owner review for other paths, CI or Azure authorization.
 A successful context-gathering run does not establish that the reviewed code is
 correct. GitHub may still provide a more limited review if its agentic Actions
 work is unavailable. Access, policies and usage charges are controlled by GitHub
@@ -141,6 +144,39 @@ checks and request another update check. Dependabot alerts and automatic
 configuration is not proof that either is enabled. This file configures neither
 Docker image updates nor private-registry credentials, and grants no Azure access.
 See [GitHub's Dependabot configuration reference](https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference).
+
+## Dependabot auto-merge
+
+The [workflow](../.github/workflows/dependabot-auto-merge.yml) only handles
+same-repository Dependabot PRs targeting the default branch. Every updated
+dependency must be an npm patch/minor update, verified by the SHA-pinned
+`dependabot/fetch-metadata` action with its default commit verification enabled.
+Only modifications to root `package.json` and `package-lock.json` are allowed;
+major or unknown updates, Actions changes, renames, other files, forks and drafts
+are left for manual review with a notice.
+
+It uses `pull_request_target` for job-scoped `contents: write` and
+`pull-requests: write` with the built-in token. It never checks out PR code,
+installs dependencies, runs PR scripts, grants approval or accesses Azure.
+It clears any existing auto-merge request before checking eligibility again,
+including when metadata verification subsequently fails.
+
+Before queueing a squash merge, it checks that repository auto-merge is enabled,
+all five CI checks are required from the GitHub Actions integration in a strict
+branch ruleset, and required approval, Code Owner review and stale-review
+dismissal remain enabled. Missing configuration and API errors fail the job.
+It rechecks the head revision before requesting auto-merge. GitHub then waits
+for its protected checks and approvals. If the PR is already ready to merge,
+the workflow instead requests a protected squash merge with that exact head SHA.
+Neither path uses an admin bypass.
+It does not fix failed builds.
+
+**Administrator setup is required:** repository files cannot enable Copilot
+approvals, auto-merge or branch rules. Follow the
+[protection setup](#configure-pull-request-protection-and-copilot) before expecting
+hands-off merging. Merge this workflow and CODEOWNERS into the default branch
+first. For an existing eligible PR, request Copilot review and reopen or edit the
+PR to trigger evaluation after configuration is complete.
 
 ## Dependency risk audit
 
@@ -318,8 +354,12 @@ your default branch with:
 
 - Required conversation resolution. Configure approval in the separate review
   ruleset below so its owner bypass does not bypass CI or conversation resolution.
-- Strict required checks named `Test (ubuntu-24.04)`, `Test (windows-2025)` and
-  `Validate infrastructure`. Run CI first so GitHub can discover these names.
+- An active **Required CI** branch ruleset targeting the default branch, with
+  an empty bypass list, **Require branches to be up to date before merging**,
+  and all five required checks below. Select **GitHub Actions** as the expected
+  source for each check (integration ID `15368`). Run CI first so GitHub can
+  discover the names. The auto-merge workflow verifies this ruleset; legacy
+  branch-protection checks alone are not sufficient for its configuration gate.
 - Administrator enforcement, with force pushes and branch deletion disabled.
 
 For the upstream repository's solo-maintainer policy, keep the legacy branch
@@ -336,8 +376,17 @@ protection's required approving-review count at zero, then create a separate
 | Require review from Code Owners | Enabled |
 | Dismiss stale approvals on new commits | Enabled |
 
-The [CODEOWNERS file](../.github/CODEOWNERS) contains `* @seilorjunior`, covering
-all files, including CODEOWNERS itself. Fork maintainers must replace that login
+The five required CI checks are `Test (ubuntu-24.04)`, `Test (windows-2025)`,
+`Lint, types and coverage`, `Validate infrastructure` and `Container smoke test`.
+Keep existing required checks and independent protections; do not replace them
+with only this list or add CI to the bypassable review ruleset.
+
+The [CODEOWNERS file](../.github/CODEOWNERS) contains `* @seilorjunior`, followed
+by ownerless exceptions for `/package.json` and `/package-lock.json`. All other
+files, including CODEOWNERS and workflows, retain owner review. The npm
+exceptions apply to every author, not just Dependabot; those paths still require
+the generic approval, and the auto-merge workflow accepts only verified
+Dependabot updates. Fork maintainers must replace the owner login
 with their own eligible code owner and configure the bypass actor in GitHub.
 CODEOWNERS must be present on the PR's base branch for GitHub to apply it.
 This setup protects PRs targeting the default branch; other base branches need
@@ -348,14 +397,15 @@ own PRs, the owner reviews the changes and manually merges using the review-only
 bypass after CI passes. GitHub does not allow self-approval.
 The bypass is **not conditional on authorship**: the owner can also bypass review
 on others' PRs. This is a trusted-maintainer policy, not strict enforcement of an
-author-dependent rule. Keep automatic merging disabled.
+author-dependent rule. Do not grant the auto-merge workflow a review bypass.
 
 Keep required CI checks, administrator enforcement and conversation resolution
 outside the bypassable review ruleset. Its bypass does not override those
 independent protections or the Copilot ruleset.
 
-Automatic Copilot review is a separate native branch ruleset. To match the upstream
-repository, create it in **Settings > Rules > Rulesets** with:
+Automatic Copilot review is a separate native branch ruleset. In
+**Settings > Rules > Rulesets**, edit **Automatic Copilot review for all pull
+requests** (or create it in a fork) with:
 
 | Setting | Value |
 | --- | --- |
@@ -364,19 +414,39 @@ repository, create it in **Settings > Rules > Rulesets** with:
 | Bypass list | Empty |
 | Automatically request Copilot code review | Enabled |
 | Review draft pull requests | Enabled |
-| Review new pushes | Disabled |
+| Review new pushes | Enabled |
 
-This requests one automatic review for new PRs, including drafts, targeting any
-branch. Request another review manually after changes when needed. For PRs already
+This requests automatic review for new PRs and new pushes, including drafts,
+targeting any branch. For PRs already
 open when the rule is enabled, request Copilot from the PR's **Reviewers** menu.
 Availability and usage limits depend on your Copilot access and GitHub settings;
 see [GitHub's configuration guide](https://docs.github.com/en/copilot/how-tos/copilot-on-github/set-up-copilot/configure-code-review).
 
-Copilot feedback does not count as the required human approval. A PR author cannot
-approve their own PR to satisfy that requirement. The single-user environment
-approval policy below controls Azure jobs separately; it is unrelated to the
-review-only owner bypass above.
-Do not add an Azure-connected or privileged PR workflow to request reviews.
+In **Settings > Copilot > Code review > Auto-approval**, enable both
+**Allow Copilot to approve pull requests** and
+**Allow Copilot approvals to count toward merge requirements**. Set **File paths**
+to exactly these two globs, one per line:
+
+```text
+package.json
+package-lock.json
+```
+
+An approval counts only when every changed file matches. Copilot comments alone
+are not approvals, and these settings do not satisfy owner review on other files.
+If the controls are unavailable under your plan or account policy, retain manual
+approval rather than reducing required approvals to zero.
+
+In **Settings > General > Pull Requests**, enable **Allow auto-merge** and leave
+squash merging enabled. Do not enable a blanket auto-approve workflow: only the
+guarded dependency workflow should automatically request merging.
+
+These are administrator settings, not defaults installed by this repository.
+Verify them in GitHub after saving. A session whose token returns HTTP 403 cannot
+apply them even if the user's account is a repository administrator.
+The single-user environment approval policy below controls Azure jobs separately;
+it is unrelated to the review-only owner bypass above. Do not add an
+Azure-connected PR workflow to request reviews or merge dependencies.
 
 ## 1. Deploy and verify the lab first
 

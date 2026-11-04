@@ -15,6 +15,8 @@ The package version identifies the lab, not the upstream APIops CLI.
 - Shared Bash/PowerShell test scenarios, Node/editor defaults and a devcontainer.
 - Tag-triggered GitHub releases, feature requests and community support guidance.
 - Optional resource-group monthly budget alerts and one-command teardown guidance.
+- Guarded Dependabot npm patch/minor auto-merge, root npm ownership exceptions,
+  and setup instructions for scoped Copilot approvals and required CI.
 
 ### Fixed
 
